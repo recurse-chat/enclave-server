@@ -1,11 +1,31 @@
-use axum::{Router, routing::get};
+pub mod protocol;
+
+use axum::{
+    Router,
+    extract::{WebSocketUpgrade, ws::WebSocket},
+    response::Response,
+    routing::{any, get},
+};
+
+use crate::protocol::Client;
 
 #[tokio::main]
 async fn main() {
-    // build our application with a single route
-    let app = Router::new().route("/", get(|| async { "Hello, World!" }));
+    let app = Router::new()
+        .route("/meta", get(|| async { "Hello, World!" }))
+        .route("/", any(ws_handler));
 
-    // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn ws_handler(ws: WebSocketUpgrade) -> Response {
+    ws.on_upgrade(|socket: WebSocket| async {
+        match Client::initialize(socket).await {
+            Ok(client) => {}
+            Err(e) => {
+                eprintln!("Failed to initialize client {e}")
+            }
+        }
+    })
 }
