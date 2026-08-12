@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let server = Server::new().await?;
 
     let app = Router::new()
-        .route("/meta", get(|| async { "Hello, World!" }))
+        .route("/meta", get(meta))
         .route("/", any(ws_handler))
         .with_state(server);
 
@@ -28,6 +28,10 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+async fn meta(State(server): State<Arc<Server>>) -> String {
+    serde_json::to_string(&server.config.meta.clone()).unwrap()
 }
 
 async fn ws_handler(State(server): State<Arc<Server>>, ws: WebSocketUpgrade) -> Response {
