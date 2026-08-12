@@ -22,9 +22,16 @@ async fn main() {
 async fn ws_handler(ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(|socket: WebSocket| async {
         match Client::initialize(socket).await {
-            Ok(client) => {}
+            Ok(mut client) => {
+                if let Err(e) = client.read_loop().await {
+                    eprintln!("Failed to handle client: {e}");
+                } else {
+                    println!("Client connection closed")
+                }
+            }
+
             Err(e) => {
-                eprintln!("Failed to initialize client {e}")
+                eprintln!("Failed to initialize client: {e}")
             }
         }
     })

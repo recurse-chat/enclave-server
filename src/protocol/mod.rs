@@ -23,8 +23,9 @@ pub enum ClientMethod {
         signature: String,
     },
 
-    #[serde(rename = "error")]
-    Error { error: Cow<'static, str> },
+    Error {
+        error: Cow<'static, str>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +43,25 @@ pub enum ServerMethod {
 }
 
 impl Client {
+    pub async fn read_loop(&mut self) -> anyhow::Result<()> {
+        while let Some(message) = self.read().await? {
+            match message {
+                ServerMethod::Initialize { .. } => {
+                    self.send(ClientMethod::Error {
+                        error: Cow::Borrowed("Already initialized"),
+                    })
+                    .await?;
+                }
+
+                ServerMethod::Error { error } => {
+                    eprintln!("Client error: {error}");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn read_socket(socket: &mut WebSocket) -> anyhow::Result<Option<ServerMethod>> {
         match socket.recv().await.transpose()? {
             Some(Message::Text(text)) => {
