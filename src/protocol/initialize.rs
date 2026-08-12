@@ -13,9 +13,7 @@ impl super::Client {
             Client::send_socket(
                 &mut socket,
                 ClientMethod::Error {
-                    error: Cow::Borrowed(
-                        "Failed to initialize, unexpected method, expected: initialize",
-                    ),
+                    error: Cow::Borrowed("Initialization required"),
                 },
             )
             .await?;
