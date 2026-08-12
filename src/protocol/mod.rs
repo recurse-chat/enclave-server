@@ -27,6 +27,9 @@ pub enum ClientMethod {
     Initialized {
         public_key: String,
         signature: String,
+
+        timestamp: u64,
+        hostname: String,
     },
 
     Error {
@@ -39,8 +42,10 @@ pub enum ClientMethod {
 pub enum ServerMethod {
     Initialize {
         public_key: String,
-        timestamp: u64,
         signature: String,
+
+        timestamp: u64,
+        hostname: String,
     },
 
     Error {

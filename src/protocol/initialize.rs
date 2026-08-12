@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::extract::ws::WebSocket;
 use ed25519_dalek::Signer;
@@ -11,8 +14,10 @@ impl super::Client {
     pub async fn initialize(server: &Arc<Server>, mut socket: WebSocket) -> anyhow::Result<Self> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
-            timestamp,
             signature,
+
+            timestamp,
+            hostname,
         }) = Client::read_socket(&mut socket).await?
         else {
             Client::send_socket(
@@ -32,7 +37,7 @@ impl super::Client {
 
         if public_key
             .verify_strict(
-                format!("{public_key_string}@{timestamp}@").as_bytes(),
+                format!("{timestamp}@{hostname}").as_bytes(),
                 &crate::signature::from_string_sig(&signature)?,
             )
             .is_ok()
@@ -40,17 +45,24 @@ impl super::Client {
             return Err(anyhow::anyhow!("Invalid signature"));
         }
 
-        Client::send_socket(
-            &mut socket,
-            ClientMethod::Initialized {
-                public_key: crate::signature::to_string(&server.key.verifying_key()),
-                signature: server
-                    .key
-                    .sign(format!("{public_key_string}@{timestamp}").as_bytes())
-                    .to_string(),
-            },
-        )
-        .await?;
+        {
+            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
+            Client::send_socket(
+                &mut socket,
+                ClientMethod::Initialized {
+                    public_key: crate::signature::to_string(&server.key.verifying_key()),
+                    signature: server
+                        .key
+                        .sign(format!("{timestamp}@{hostname}@{public_key_string}").as_bytes())
+                        .to_string(),
+
+                    timestamp,
+                    hostname,
+                },
+            )
+            .await?;
+        }
 
         Ok(Self {
             socket,
