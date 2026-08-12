@@ -24,8 +24,10 @@ impl Server {
 
 impl Server {
     pub async fn ws_handler(self: &Arc<Self>, ws: WebSocketUpgrade) -> Response {
-        ws.on_upgrade(|socket: WebSocket| async {
-            match Client::initialize(socket).await {
+        let s = self.clone();
+
+        ws.on_upgrade(move |socket: WebSocket| async move {
+            match Client::initialize(&s, socket).await {
                 Ok(mut client) => {
                     if let Err(e) = client.read_loop().await {
                         eprintln!("Failed to handle client: {e}");

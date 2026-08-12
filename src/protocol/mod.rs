@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
+use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 
 pub mod initialize;
@@ -8,7 +9,7 @@ pub mod initialize;
 pub struct Client {
     pub socket: WebSocket,
     pub meta: ClientMeta,
-    pub public_key: String,
+    pub public_key: VerifyingKey,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,7 +26,6 @@ pub struct ServerMeta {
 pub enum ClientMethod {
     Initialized {
         public_key: String,
-        timestamp: u64,
         signature: String,
     },
 
