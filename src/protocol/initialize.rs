@@ -64,9 +64,23 @@ impl super::Client {
             .await?;
         }
 
+        let Some(ServerMethod::Meta(meta)) = Client::read_socket(&mut socket).await? else {
+            Client::send_socket(
+                &mut socket,
+                ClientMethod::Error {
+                    error: Cow::Borrowed("Expected meta"),
+                },
+            )
+            .await?;
+
+            return Err(anyhow::anyhow!(
+                "Expected meta, client called another method"
+            ));
+        };
+
         Ok(Self {
             socket,
-            meta: super::ClientMeta {},
+            meta,
             public_key,
         })
     }

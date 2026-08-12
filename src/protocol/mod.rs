@@ -48,6 +48,8 @@ pub enum ServerMethod {
         hostname: String,
     },
 
+    Meta(ClientMeta),
+
     Error {
         error: String,
     },
@@ -63,6 +65,8 @@ impl Client {
                     })
                     .await?;
                 }
+
+                ServerMethod::Meta(meta) => {}
 
                 ServerMethod::Error { error } => {
                     eprintln!("Client error: {error}");
