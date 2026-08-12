@@ -6,16 +6,18 @@ use axum::{
 };
 use ed25519_dalek::SigningKey;
 
-use crate::protocol::Client;
+use crate::{config::Config, protocol::Client};
 
 pub struct Server {
     pub key: SigningKey,
+    pub config: Config,
 }
 
 impl Server {
     pub async fn new() -> anyhow::Result<Arc<Self>> {
         Ok(Arc::new(Self {
             key: crate::signature::get().await?,
+            config: Config::get().await?,
         }))
     }
 }

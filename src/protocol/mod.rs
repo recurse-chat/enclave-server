@@ -15,6 +15,12 @@ pub struct Client {
 pub struct ClientMeta {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerMeta {
+    pub name: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
 pub enum ClientMethod {
     Initialized {
