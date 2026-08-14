@@ -76,21 +76,21 @@ pub async fn read_loop(socket: &Arc<Mutex<WebSocket>>) -> anyhow::Result<()> {
 
 pub async fn read_socket(socket: &mut WebSocket) -> anyhow::Result<Option<ServerMethod>> {
     match socket.recv().await.transpose()? {
-        Some(Message::Text(text)) => {
-            if let Ok(msg) = serde_json::from_str(&text.to_string()) {
-                Ok(Some(msg))
-            } else {
+        Some(Message::Text(text)) => match serde_json::from_str(&text.to_string()) {
+            Ok(msg) => Ok(Some(msg)),
+
+            Err(e) => {
                 send_socket(
                     socket,
                     &ClientMethod::Error {
-                        error: Cow::Borrowed("Unable to parse message: {text}"),
+                        error: Cow::Owned(format!("Unable to parse message: {e}")),
                     },
                 )
                 .await?;
 
                 Ok(None)
             }
-        }
+        },
 
         Some(Message::Ping(v)) => {
             socket.send(Message::Pong(v)).await?;

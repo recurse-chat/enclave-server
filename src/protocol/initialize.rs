@@ -37,15 +37,33 @@ impl UserConnections {
             ));
         };
 
-        let public_key = crate::signature::from_string(&public_key_string)?;
+        let Ok(public_key) = crate::signature::from_string(&public_key_string) else {
+            send_socket(
+                &mut socket,
+                &ClientMethod::Error {
+                    error: Cow::Borrowed("Invalid public key"),
+                },
+            )
+            .await?;
+
+            return Err(anyhow::anyhow!("Invalid public key"));
+        };
 
         if public_key
             .verify_strict(
                 format!("{timestamp}@{hostname}").as_bytes(),
                 &crate::signature::from_string_sig(&signature)?,
             )
-            .is_ok()
+            .is_err()
         {
+            send_socket(
+                &mut socket,
+                &ClientMethod::Error {
+                    error: Cow::Borrowed("Invalid signature"),
+                },
+            )
+            .await?;
+
             return Err(anyhow::anyhow!("Invalid signature"));
         }
 
