@@ -1,16 +1,31 @@
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, atomic::AtomicU16},
+};
 
 use axum::{
     extract::{WebSocketUpgrade, ws::WebSocket},
     response::Response,
 };
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use tokio::sync::Mutex;
 
-use crate::{config::Config, protocol::Client};
+use crate::{
+    config::Config,
+    protocol::{ClientMeta, ClientMethod, read_loop, send_socket},
+};
+
+pub struct UserConnections {
+    pub meta: ClientMeta,
+    pub counter: AtomicU16,
+    pub public_key: VerifyingKey,
+    pub connections: HashMap<u16, Arc<Mutex<WebSocket>>>,
+}
 
 pub struct Server {
     pub key: SigningKey,
     pub config: Config,
+    pub clients: Mutex<HashMap<VerifyingKey, UserConnections>>,
 }
 
 impl Server {
@@ -18,6 +33,7 @@ impl Server {
         Ok(Arc::new(Self {
             key: crate::signature::get().await?,
             config: Config::get().await?,
+            clients: Mutex::new(HashMap::new()),
         }))
     }
 }
@@ -27,9 +43,30 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            match Client::initialize(&s, socket).await {
-                Ok(mut client) => {
-                    if let Err(e) = client.read_loop().await {
+            match UserConnections::initialize(&s, socket).await {
+                Ok((client, public_key, meta)) => {
+                    let client = Arc::new(Mutex::new(client));
+
+                    let mut clients_meta = s.clients.lock().await;
+
+                    let client_meta =
+                        clients_meta
+                            .entry(public_key)
+                            .or_insert_with(|| UserConnections {
+                                meta,
+                                public_key: public_key,
+                                counter: AtomicU16::new(0),
+                                connections: HashMap::new(),
+                            });
+
+                    client_meta.connections.insert(
+                        client_meta
+                            .counter
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                        client.clone(),
+                    );
+
+                    if let Err(e) = read_loop(&client).await {
                         eprintln!("Failed to handle client: {e}");
                     } else {
                         println!("Client connection closed")
@@ -41,5 +78,25 @@ impl Server {
                 }
             }
         })
+    }
+}
+
+impl UserConnections {
+    pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
+        for (_, conn) in &self.connections {
+            send_socket(&mut *conn.lock().await, message).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn send_to(&self, id: u16, message: &ClientMethod) -> anyhow::Result<bool> {
+        if let Some(conn) = self.connections.get(&id) {
+            send_socket(&mut *conn.lock().await, message).await?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
