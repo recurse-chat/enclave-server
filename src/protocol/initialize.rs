@@ -11,7 +11,10 @@ use crate::server::Server;
 use super::*;
 
 impl super::Client {
-    pub async fn initialize(server: &Arc<Server>, mut socket: WebSocket) -> anyhow::Result<Self> {
+    pub async fn initialize(
+        server: &Arc<Server>,
+        mut socket: WebSocket,
+    ) -> anyhow::Result<(Self, ClientMeta)> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
             signature,
@@ -78,10 +81,12 @@ impl super::Client {
             ));
         };
 
-        Ok(Self {
-            socket,
+        Ok((
+            Self {
+                socket: Arc::new(Mutex::new(socket)),
+                public_key,
+            },
             meta,
-            public_key,
-        })
+        ))
     }
 }

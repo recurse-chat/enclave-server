@@ -1,14 +1,15 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 pub mod initialize;
 
+#[derive(Clone)]
 pub struct Client {
-    pub socket: WebSocket,
-    pub meta: ClientMeta,
+    pub socket: Arc<Mutex<WebSocket>>,
     pub public_key: VerifyingKey,
 }
 
@@ -118,10 +119,10 @@ impl Client {
     }
 
     pub async fn read(&mut self) -> anyhow::Result<Option<ServerMethod>> {
-        Self::read_socket(&mut self.socket).await
+        Self::read_socket(&mut *self.socket.lock().await).await
     }
 
     pub async fn send(&mut self, message: ClientMethod) -> anyhow::Result<()> {
-        Self::send_socket(&mut self.socket, message).await
+        Self::send_socket(&mut *self.socket.lock().await, message).await
     }
 }
