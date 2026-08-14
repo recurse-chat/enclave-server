@@ -1,17 +1,10 @@
 use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
-use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 pub mod initialize;
-
-#[derive(Clone)]
-pub struct Client {
-    pub socket: Arc<Mutex<WebSocket>>,
-    pub public_key: VerifyingKey,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientMeta {}
@@ -56,73 +49,67 @@ pub enum ServerMethod {
     },
 }
 
-impl Client {
-    pub async fn read_loop(&mut self) -> anyhow::Result<()> {
-        while let Some(message) = self.read().await? {
-            match message {
-                ServerMethod::Initialize { .. } => {
-                    self.send(ClientMethod::Error {
+pub async fn read_loop(socket: &Arc<Mutex<WebSocket>>) -> anyhow::Result<()> {
+    while let Some(message) = read_socket(&mut *socket.lock().await).await? {
+        match message {
+            ServerMethod::Initialize { .. } => {
+                send_socket(
+                    &mut *socket.lock().await,
+                    &ClientMethod::Error {
                         error: Cow::Borrowed("Already initialized"),
-                    })
-                    .await?;
-                }
+                    },
+                )
+                .await?;
+            }
 
-                ServerMethod::Meta(meta) => {}
+            #[allow(unused_variables)]
+            ServerMethod::Meta(meta) => {}
 
-                ServerMethod::Error { error } => {
-                    eprintln!("Client error: {error}");
-                }
+            ServerMethod::Error { error } => {
+                eprintln!("Client error: {error}");
             }
         }
-
-        Ok(())
     }
 
-    pub async fn read_socket(socket: &mut WebSocket) -> anyhow::Result<Option<ServerMethod>> {
-        match socket.recv().await.transpose()? {
-            Some(Message::Text(text)) => {
-                if let Ok(msg) = serde_json::from_str(&text.to_string()) {
-                    Ok(Some(msg))
-                } else {
-                    Client::send_socket(
-                        socket,
-                        ClientMethod::Error {
-                            error: Cow::Borrowed("Unable to parse message: {text}"),
-                        },
-                    )
-                    .await?;
+    Ok(())
+}
 
-                    Ok(None)
-                }
-            }
-
-            Some(Message::Ping(v)) => {
-                socket.send(Message::Pong(v)).await?;
+pub async fn read_socket(socket: &mut WebSocket) -> anyhow::Result<Option<ServerMethod>> {
+    match socket.recv().await.transpose()? {
+        Some(Message::Text(text)) => {
+            if let Ok(msg) = serde_json::from_str(&text.to_string()) {
+                Ok(Some(msg))
+            } else {
+                send_socket(
+                    socket,
+                    &ClientMethod::Error {
+                        error: Cow::Borrowed("Unable to parse message: {text}"),
+                    },
+                )
+                .await?;
 
                 Ok(None)
             }
-
-            Some(_) => Ok(None),
-
-            None => Ok(None),
         }
-    }
 
-    pub async fn send_socket(socket: &mut WebSocket, message: ClientMethod) -> anyhow::Result<()> {
-        socket
-            .send(Message::Text(Utf8Bytes::from(serde_json::to_string(
-                &message,
-            )?)))
-            .await?;
+        Some(Message::Ping(v)) => {
+            socket.send(Message::Pong(v)).await?;
 
-        Ok(())
-    }
+            Ok(None)
+        }
 
-    pub async fn read(&mut self) -> anyhow::Result<Option<ServerMethod>> {
-        Self::read_socket(&mut *self.socket.lock().await).await
-    }
+        Some(_) => Ok(None),
 
-    pub async fn send(&mut self, message: ClientMethod) -> anyhow::Result<()> {
-        Self::send_socket(&mut *self.socket.lock().await, message).await
+        None => Ok(None),
     }
+}
+
+pub async fn send_socket(socket: &mut WebSocket, message: &ClientMethod) -> anyhow::Result<()> {
+    socket
+        .send(Message::Text(Utf8Bytes::from(serde_json::to_string(
+            message,
+        )?)))
+        .await?;
+
+    Ok(())
 }

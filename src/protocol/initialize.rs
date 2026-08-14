@@ -4,28 +4,29 @@ use std::{
 };
 
 use axum::extract::ws::WebSocket;
-use ed25519_dalek::Signer;
+use ed25519_dalek::{Signer, VerifyingKey};
 
 use crate::server::Server;
 
 use super::*;
+use crate::server::UserConnections;
 
-impl super::Client {
+impl UserConnections {
     pub async fn initialize(
         server: &Arc<Server>,
         mut socket: WebSocket,
-    ) -> anyhow::Result<(Self, ClientMeta)> {
+    ) -> anyhow::Result<(WebSocket, VerifyingKey, ClientMeta)> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
             signature,
 
             timestamp,
             hostname,
-        }) = Client::read_socket(&mut socket).await?
+        }) = read_socket(&mut socket).await?
         else {
-            Client::send_socket(
+            send_socket(
                 &mut socket,
-                ClientMethod::Error {
+                &ClientMethod::Error {
                     error: Cow::Borrowed("Initialization required"),
                 },
             )
@@ -51,9 +52,9 @@ impl super::Client {
         {
             let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
-            Client::send_socket(
+            send_socket(
                 &mut socket,
-                ClientMethod::Initialized {
+                &ClientMethod::Initialized {
                     public_key: crate::signature::to_string(&server.key.verifying_key()),
                     signature: server
                         .key
@@ -67,10 +68,10 @@ impl super::Client {
             .await?;
         }
 
-        let Some(ServerMethod::Meta(meta)) = Client::read_socket(&mut socket).await? else {
-            Client::send_socket(
+        let Some(ServerMethod::Meta(meta)) = read_socket(&mut socket).await? else {
+            send_socket(
                 &mut socket,
-                ClientMethod::Error {
+                &ClientMethod::Error {
                     error: Cow::Borrowed("Expected meta"),
                 },
             )
@@ -81,12 +82,6 @@ impl super::Client {
             ));
         };
 
-        Ok((
-            Self {
-                socket: Arc::new(Mutex::new(socket)),
-                public_key,
-            },
-            meta,
-        ))
+        Ok((socket, public_key, meta))
     }
 }

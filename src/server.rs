@@ -12,19 +12,20 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::Config,
-    protocol::{Client, ClientMeta},
+    protocol::{ClientMeta, ClientMethod, read_loop, send_socket},
 };
 
-pub struct OnlineClientMeta {
+pub struct UserConnections {
     pub meta: ClientMeta,
     pub counter: AtomicU16,
-    pub connections: HashMap<u16, Client>,
+    pub public_key: VerifyingKey,
+    pub connections: HashMap<u16, Arc<Mutex<WebSocket>>>,
 }
 
 pub struct Server {
     pub key: SigningKey,
     pub config: Config,
-    pub clients: Mutex<HashMap<VerifyingKey, OnlineClientMeta>>,
+    pub clients: Mutex<HashMap<VerifyingKey, UserConnections>>,
 }
 
 impl Server {
@@ -42,15 +43,18 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            match Client::initialize(&s, socket).await {
-                Ok((mut client, meta)) => {
+            match UserConnections::initialize(&s, socket).await {
+                Ok((client, public_key, meta)) => {
+                    let client = Arc::new(Mutex::new(client));
+
                     let mut clients_meta = s.clients.lock().await;
 
                     let client_meta =
                         clients_meta
-                            .entry(client.public_key)
-                            .or_insert_with(|| OnlineClientMeta {
+                            .entry(public_key)
+                            .or_insert_with(|| UserConnections {
                                 meta,
+                                public_key: public_key,
                                 counter: AtomicU16::new(0),
                                 connections: HashMap::new(),
                             });
@@ -62,7 +66,7 @@ impl Server {
                         client.clone(),
                     );
 
-                    if let Err(e) = client.read_loop().await {
+                    if let Err(e) = read_loop(&client).await {
                         eprintln!("Failed to handle client: {e}");
                     } else {
                         println!("Client connection closed")
@@ -74,5 +78,25 @@ impl Server {
                 }
             }
         })
+    }
+}
+
+impl UserConnections {
+    pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
+        for (_, conn) in &self.connections {
+            send_socket(&mut *conn.lock().await, message).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn send_to(&self, id: u16, message: &ClientMethod) -> anyhow::Result<bool> {
+        if let Some(conn) = self.connections.get(&id) {
+            send_socket(&mut *conn.lock().await, message).await?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
