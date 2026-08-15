@@ -3,7 +3,10 @@ pub mod protocol;
 pub mod server;
 pub mod signature;
 
-use std::sync::Arc;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use axum::{
     Router,
@@ -21,9 +24,13 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/meta", get(meta))
         .route("/", any(ws_handler))
-        .with_state(server);
+        .with_state(server.clone());
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = tokio::net::TcpListener::bind(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
+        server.config.port,
+    ))
+    .await?;
 
     axum::serve(listener, app).await?;
 

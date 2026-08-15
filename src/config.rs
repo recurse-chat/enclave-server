@@ -7,6 +7,7 @@ use crate::protocol::ServerMeta;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub meta: ServerMeta,
+    pub port: u16,
     pub public_hostname: String,
     pub hostnames: HashSet<String>,
 }
@@ -18,6 +19,10 @@ impl Config {
                 name: "New Server".to_string(),
                 description: String::new(),
             },
+
+            port: 3415,
+
+            public_hostname: "localhost:3000".to_string(),
 
             hostnames: HashSet::from_iter(["localhost:3000".to_string()]),
         }
