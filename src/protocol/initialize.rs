@@ -37,6 +37,34 @@ impl UserConnections {
             ));
         };
 
+        let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+
+        if server_timestamp - timestamp > 2 {
+            send_socket(
+                &mut socket,
+                &ClientMethod::Error {
+                    error: Cow::Borrowed(
+                        "Timestamp doesn't match, make sure it's in secs and is (<= 2secs)",
+                    ),
+                },
+            )
+            .await?;
+
+            return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
+        }
+
+        if !server.config.hostnames.contains(&hostname) {
+            send_socket(
+                &mut socket,
+                &ClientMethod::Error {
+                    error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname: {}", server.config.public_hostname)),
+                },
+            )
+            .await?;
+
+            return Err(anyhow::anyhow!("Client's hostname wasn't correct"));
+        }
+
         let Ok(public_key) = crate::signature::from_string(&public_key_string) else {
             send_socket(
                 &mut socket,
@@ -68,8 +96,6 @@ impl UserConnections {
         }
 
         {
-            let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-
             send_socket(
                 &mut socket,
                 &ClientMethod::Initialized {
@@ -79,7 +105,7 @@ impl UserConnections {
                         .sign(format!("{timestamp}@{hostname}@{public_key_string}").as_bytes())
                         .to_string(),
 
-                    timestamp,
+                    timestamp: server_timestamp,
                     hostname,
                 },
             )

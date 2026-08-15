@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,8 @@ use crate::protocol::ServerMeta;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub meta: ServerMeta,
+    pub public_hostname: String,
+    pub hostnames: HashSet<String>,
 }
 
 impl Config {
@@ -16,6 +18,8 @@ impl Config {
                 name: "New Server".to_string(),
                 description: String::new(),
             },
+
+            hostnames: HashSet::from_iter(["localhost:3000".to_string()]),
         }
     }
 
