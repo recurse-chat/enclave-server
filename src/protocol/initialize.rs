@@ -53,7 +53,8 @@ impl UserConnections {
             return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
         }
 
-        if !server.config.hostnames.contains(&hostname) {
+        if hostname != server.config.public_hostname || !server.config.hostnames.contains(&hostname)
+        {
             send_socket(
                 &mut socket,
                 &ClientMethod::Error {
