@@ -37,9 +37,9 @@ impl UserConnections {
             ));
         };
 
-        let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
-        if server_timestamp - timestamp > 2 {
+        if server_timestamp.saturating_sub(timestamp) > 2000 {
             send_socket(
                 &mut socket,
                 &ClientMethod::Error {
