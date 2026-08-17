@@ -101,10 +101,9 @@ impl UserConnections {
                 &mut socket,
                 &ClientMethod::Initialized {
                     public_key: crate::signature::to_string(&server.key.verifying_key()),
-                    signature: server
-                        .key
-                        .sign(format!("{timestamp}@{hostname}@{public_key_string}").as_bytes())
-                        .to_string(),
+                    signature: crate::signature::to_string_sig(&server.key.sign(
+                        format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
+                    )),
 
                     timestamp: server_timestamp,
                     hostname,

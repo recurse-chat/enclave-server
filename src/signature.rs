@@ -41,3 +41,7 @@ pub fn from_string_sig(signature: &str) -> anyhow::Result<Signature> {
             .map_err(|_| anyhow::anyhow!("Invalid public key"))?,
     ))
 }
+
+pub fn to_string_sig(signature: &Signature) -> String {
+    bs58::encode(signature.to_bytes()).into_string()
+}
