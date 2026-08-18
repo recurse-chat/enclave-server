@@ -12,3 +12,4 @@ tokio = { version = "1.53.1", features = ["rt", "rt-multi-thread", "macros", "sy
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 bs58 = "0.5.1"
+tower-http = { version = "0.7.0", features = ["fs"] }

@@ -14,6 +14,7 @@ use axum::{
     response::Response,
     routing::{any, get},
 };
+use tower_http::services::ServeFile;
 
 use crate::server::Server;
 
@@ -24,6 +25,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/meta", get(meta))
         .route("/", any(ws_handler))
+        .route_service("/icon", ServeFile::new("./icon.png"))
         .with_state(server.clone());
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(
