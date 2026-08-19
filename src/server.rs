@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::Config,
-    protocol::{ClientMeta, ClientMethod, read_loop, send_socket},
+    protocol::{ClientMethod, read_loop, send_socket},
+    types::ClientMeta,
 };
 
 pub struct UserConnections {
@@ -49,7 +50,7 @@ impl Server {
 
                     let mut clients_meta = s.clients.lock().await;
 
-                    let client_meta =
+                    let clients =
                         clients_meta
                             .entry(public_key)
                             .or_insert_with(|| UserConnections {
@@ -59,17 +60,22 @@ impl Server {
                                 connections: HashMap::new(),
                             });
 
-                    client_meta.connections.insert(
-                        client_meta
-                            .counter
-                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-                        client.clone(),
-                    );
+                    let conid = clients
+                        .counter
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                    clients.connections.insert(conid, client.clone());
 
                     if let Err(e) = read_loop(&client).await {
                         eprintln!("Failed to handle client: {e}");
                     } else {
                         println!("Client connection closed")
+                    }
+
+                    clients.connections.remove(&conid);
+
+                    if clients.connections.len() == 0 {
+                        clients_meta.remove(&public_key);
                     }
                 }
 

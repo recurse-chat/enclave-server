@@ -2,6 +2,7 @@ pub mod config;
 pub mod protocol;
 pub mod server;
 pub mod signature;
+pub mod types;
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -14,6 +15,10 @@ use axum::{
     response::Response,
     routing::{any, get},
 };
+use tower_http::{
+    cors::{Any, CorsLayer},
+    services::ServeFile,
+};
 
 use crate::server::Server;
 
@@ -21,10 +26,17 @@ use crate::server::Server;
 async fn main() -> anyhow::Result<()> {
     let server = Server::new().await?;
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/meta", get(meta))
         .route("/", any(ws_handler))
-        .with_state(server.clone());
+        .route_service("/icon", ServeFile::new("./icon.png"))
+        .with_state(server.clone())
+        .layer(cors);
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),

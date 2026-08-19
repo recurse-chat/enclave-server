@@ -24,6 +24,10 @@ pub fn to_string(key: &VerifyingKey) -> String {
     bs58::encode(key.to_bytes()).into_string()
 }
 
+pub fn to_string_sig(signature: &Signature) -> String {
+    bs58::encode(signature.to_bytes()).into_string()
+}
+
 pub fn from_string(key: &str) -> anyhow::Result<VerifyingKey> {
     Ok(VerifyingKey::from_bytes(
         &bs58::decode(key)
@@ -38,6 +42,6 @@ pub fn from_string_sig(signature: &str) -> anyhow::Result<Signature> {
         &bs58::decode(signature)
             .into_vec()?
             .try_into()
-            .map_err(|_| anyhow::anyhow!("Invalid public key"))?,
+            .map_err(|_| anyhow::anyhow!("Invalid signature"))?,
     ))
 }
