@@ -11,7 +11,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use tokio::sync::Mutex;
 
 use crate::{
-    config::Config,
+    data::config::Config,
     protocol::{ClientMethod, read_loop, send_socket},
     types::ClientMeta,
 };
