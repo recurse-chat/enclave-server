@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, atomic::AtomicU16},
 };
 
@@ -11,7 +12,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use tokio::sync::Mutex;
 
 use crate::{
-    data::config::Config,
+    data::{config::Config, messages::MessageStore},
     protocol::{ClientMethod, read_loop, send_socket},
     types::ClientMeta,
 };
@@ -27,6 +28,7 @@ pub struct Server {
     pub key: SigningKey,
     pub config: Config,
     pub clients: Mutex<HashMap<VerifyingKey, UserConnections>>,
+    pub message_store: MessageStore,
 }
 
 impl Server {
@@ -35,6 +37,7 @@ impl Server {
             key: crate::signature::get().await?,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
+            message_store: MessageStore::new(PathBuf::from("item"))?,
         }))
     }
 }
