@@ -1,5 +1,6 @@
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -9,14 +10,19 @@ pub struct MessageStore {
     connections: Mutex<HashMap<String, Connection>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageData {
+    pub content: String,
+    pub timestamp: u64,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {
     pub id: String,
-    pub author_pubkey: String,
-    pub content: String,
-    pub timestamp: i64,
-    pub signature: String,
-    pub channel_id: String,
+    pub author: String,
+    #[serde(flatten)]
+    pub data: MessageData,
 }
 
 impl MessageStore {
@@ -48,7 +54,6 @@ impl MessageStore {
                     content TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     signature TEXT NOT NULL,
-                    channel_id TEXT NOT NULL
                 )",
                 [],
             )?;
@@ -68,15 +73,14 @@ impl MessageStore {
     pub fn insert_message(&self, channel_id: &str, msg: &StoredMessage) -> Result<()> {
         self.with_channel(channel_id, |conn| {
             conn.execute(
-                "INSERT INTO messages (id, author_pubkey, content, timestamp, signature, channel_id)
+                "INSERT INTO messages (id, author_pubkey, content, timestamp, signature)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     msg.id,
-                    msg.author_pubkey,
-                    msg.content,
-                    msg.timestamp,
-                    msg.signature,
-                    msg.channel_id,
+                    msg.author,
+                    msg.data.content,
+                    msg.data.timestamp,
+                    msg.data.signature,
                 ],
             )?;
             Ok(())
@@ -87,7 +91,7 @@ impl MessageStore {
     pub fn get_recent_messages(&self, channel_id: &str, limit: u32) -> Result<Vec<StoredMessage>> {
         self.with_channel(channel_id, |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, author_pubkey, content, timestamp, signature, channel_id
+                "SELECT id, author_pubkey, content, timestamp, signature
                  FROM messages
                  ORDER BY timestamp DESC
                  LIMIT ?1",
@@ -96,11 +100,12 @@ impl MessageStore {
             let rows = stmt.query_map(params![limit], |row| {
                 Ok(StoredMessage {
                     id: row.get(0)?,
-                    author_pubkey: row.get(1)?,
-                    content: row.get(2)?,
-                    timestamp: row.get(3)?,
-                    signature: row.get(4)?,
-                    channel_id: row.get(5)?,
+                    author: row.get(1)?,
+                    data: MessageData {
+                        content: row.get(2)?,
+                        timestamp: row.get(3)?,
+                        signature: row.get(4)?,
+                    },
                 })
             })?;
 

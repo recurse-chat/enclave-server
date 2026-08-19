@@ -69,7 +69,7 @@ impl Server {
 
                     clients.connections.insert(conid, client.clone());
 
-                    if let Err(e) = read_loop(&client).await {
+                    if let Err(e) = read_loop(&s, public_key, &client).await {
                         eprintln!("Failed to handle client: {e}");
                     } else {
                         println!("Client connection closed")
