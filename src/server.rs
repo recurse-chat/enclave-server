@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 
 use crate::{
     config::Config,
-    protocol::{ClientMeta, ClientMethod, read_loop, send_socket},
+    protocol::{ClientMethod, read_loop, send_socket},
+    types::ClientMeta,
 };
 
 pub struct UserConnections {

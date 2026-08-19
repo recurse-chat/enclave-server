@@ -4,16 +4,9 @@ use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use crate::types::ClientMeta;
+
 pub mod initialize;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClientMeta {}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerMeta {
-    pub name: String,
-    pub description: String,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]

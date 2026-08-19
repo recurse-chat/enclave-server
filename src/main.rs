@@ -2,6 +2,7 @@ pub mod config;
 pub mod protocol;
 pub mod server;
 pub mod signature;
+pub mod types;
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},

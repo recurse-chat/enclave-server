@@ -2,7 +2,7 @@ use std::{collections::HashSet, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::ServerMeta;
+use crate::types::{Channel, ChannelKind, ServerMeta};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -18,6 +18,19 @@ impl Config {
             meta: ServerMeta {
                 name: "New Server".to_string(),
                 description: String::new(),
+
+                channels: vec![Channel {
+                    id: "text-channels".to_string(),
+                    name: "Text Channels".to_string(),
+
+                    data: ChannelKind::Category {
+                        channels: vec![Channel {
+                            id: "general".to_string(),
+                            name: "General".to_string(),
+                            data: ChannelKind::Text,
+                        }],
+                    },
+                }],
             },
 
             port: 3415,
