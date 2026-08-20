@@ -1,12 +1,14 @@
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
+use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::types::ClientMeta;
+use crate::{data::messages::StoredMessage, server::Server, types::ClientMeta};
 
 pub mod initialize;
+pub mod message;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
@@ -17,6 +19,10 @@ pub enum ClientMethod {
 
         timestamp: u64,
         hostname: String,
+    },
+
+    Messages {
+        messages: HashMap<String, Vec<StoredMessage>>,
     },
 
     Error {
@@ -35,6 +41,16 @@ pub enum ServerMethod {
         hostname: String,
     },
 
+    SendMessage {
+        channel_id: String,
+        data: crate::data::messages::MessageData,
+    },
+
+    GetMessages {
+        channel_id: String,
+        chunk: u32,
+    },
+
     Meta(ClientMeta),
 
     Error {
@@ -42,8 +58,16 @@ pub enum ServerMethod {
     },
 }
 
-pub async fn read_loop(socket: &Arc<Mutex<WebSocket>>) -> anyhow::Result<()> {
-    while let Some(message) = read_socket(&mut *socket.lock().await).await? {
+pub async fn read_loop(
+    server: &Arc<Server>,
+    verifying_key: VerifyingKey,
+    socket: &Arc<Mutex<WebSocket>>,
+) -> anyhow::Result<()> {
+    let mut socket_lock = socket.lock().await;
+
+    while let Some(message) = read_socket(&mut *socket_lock).await? {
+        drop(socket_lock);
+
         match message {
             ServerMethod::Initialize { .. } => {
                 send_socket(
@@ -61,7 +85,17 @@ pub async fn read_loop(socket: &Arc<Mutex<WebSocket>>) -> anyhow::Result<()> {
             ServerMethod::Error { error } => {
                 eprintln!("Client error: {error}");
             }
+
+            ServerMethod::SendMessage { channel_id, data } => {
+                message::send_message(server, verifying_key, socket, data, channel_id).await?;
+            }
+
+            ServerMethod::GetMessages { channel_id, chunk } => {
+                message::get_messages(server, verifying_key, socket, channel_id, chunk).await?;
+            }
         }
+
+        socket_lock = socket.lock().await;
     }
 
     Ok(())
