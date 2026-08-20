@@ -75,11 +75,15 @@ impl Server {
                         .await
                         .insert(conid, client.clone());
 
+                    drop(clients_meta);
+
                     if let Err(e) = read_loop(&s, public_key, &client).await {
                         eprintln!("Failed to handle client: {e}");
                     } else {
                         println!("Client connection closed")
                     }
+
+                    let mut clients_meta = s.clients.lock().await;
 
                     let mut connections = clients.connections.lock().await;
 
