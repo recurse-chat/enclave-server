@@ -1,7 +1,9 @@
 use crate::data::messages::{MessageData, StoredMessage};
+use crate::protocol::{ClientMethod, send_socket};
 use crate::server::Server;
 use axum::extract::ws::WebSocket;
 use ed25519_dalek::{Verifier, VerifyingKey};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
@@ -42,6 +44,30 @@ pub async fn send_message(
     };
 
     server.message_store.insert_message(&channel_id, &stored)?;
+
+    Ok(())
+}
+
+pub async fn get_messages(
+    server: &Arc<Server>,
+    _verifying_key: VerifyingKey,
+    socket: &Arc<Mutex<WebSocket>>,
+    channel_id: String,
+    chunk: u32,
+) -> anyhow::Result<()> {
+    const CHUNK_SIZE: u32 = 16;
+
+    let messages = server
+        .message_store
+        .get_recent_messages(&channel_id, CHUNK_SIZE, chunk)?;
+
+    send_socket(
+        &mut *socket.lock().await,
+        &ClientMethod::Messages {
+            messages: HashMap::from([(channel_id, messages)]),
+        },
+    )
+    .await?;
 
     Ok(())
 }

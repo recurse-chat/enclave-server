@@ -87,17 +87,24 @@ impl MessageStore {
         })
     }
 
-    /// Fetches the most recent `limit` messages, oldest-first (ready to render top-to-bottom).
-    pub fn get_recent_messages(&self, channel_id: &str, limit: u32) -> Result<Vec<StoredMessage>> {
+    /// Fetches the most recent `limit` messages by the `offset`.
+    pub fn get_recent_messages(
+        &self,
+        channel_id: &str,
+        limit: u32,
+        chunk: u32,
+    ) -> Result<Vec<StoredMessage>> {
         self.with_channel(channel_id, |conn| {
+            let offset = chunk * limit;
+
             let mut stmt = conn.prepare(
                 "SELECT id, author_pubkey, content, timestamp, signature
                  FROM messages
                  ORDER BY timestamp DESC
-                 LIMIT ?1",
+                 LIMIT ?1 OFFSET ?2",
             )?;
 
-            let rows = stmt.query_map(params![limit], |row| {
+            let rows = stmt.query_map(params![limit, offset], |row| {
                 Ok(StoredMessage {
                     id: row.get(0)?,
                     author: row.get(1)?,
