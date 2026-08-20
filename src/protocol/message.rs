@@ -45,6 +45,12 @@ pub async fn send_message(
 
     server.message_store.insert_message(&channel_id, &stored)?;
 
+    server
+        .broadcast(&ClientMethod::Messages {
+            messages: HashMap::from([(channel_id, vec![stored])]),
+        })
+        .await?;
+
     Ok(())
 }
 
