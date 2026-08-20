@@ -1,7 +1,7 @@
 use crate::data::messages::{MessageData, StoredMessage};
 use crate::server::Server;
 use axum::extract::ws::WebSocket;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Verifier, VerifyingKey};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 pub async fn send_message(
     server: &Arc<Server>,
     verifying_key: VerifyingKey,
-    socket: &Arc<Mutex<WebSocket>>,
+    _socket: &Arc<Mutex<WebSocket>>,
     message: MessageData,
     channel_id: String,
 ) -> anyhow::Result<()> {

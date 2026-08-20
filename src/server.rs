@@ -37,7 +37,7 @@ impl Server {
             key: crate::signature::get().await?,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
-            message_store: MessageStore::new(PathBuf::from("item"))?,
+            message_store: MessageStore::new(PathBuf::from("messages"))?,
         }))
     }
 }

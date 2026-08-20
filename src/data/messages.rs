@@ -53,7 +53,7 @@ impl MessageStore {
                     author_pubkey TEXT NOT NULL,
                     content TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
-                    signature TEXT NOT NULL,
+                    signature TEXT NOT NULL
                 )",
                 [],
             )?;
@@ -74,7 +74,7 @@ impl MessageStore {
         self.with_channel(channel_id, |conn| {
             conn.execute(
                 "INSERT INTO messages (id, author_pubkey, content, timestamp, signature)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     msg.id,
                     msg.author,
