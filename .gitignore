@@ -28,3 +28,4 @@ target
 private.key
 config.json
 messages
+users.db

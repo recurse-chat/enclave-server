@@ -9,6 +9,7 @@ use crate::{data::messages::StoredMessage, server::Server, types::ClientMeta};
 
 pub mod initialize;
 pub mod message;
+pub mod user;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
@@ -23,6 +24,10 @@ pub enum ClientMethod {
 
     Messages {
         messages: HashMap<String, Vec<StoredMessage>>,
+    },
+
+    Users {
+        users: HashMap<String, ClientMeta>,
     },
 
     Error {
@@ -52,6 +57,10 @@ pub enum ServerMethod {
     },
 
     Meta(ClientMeta),
+
+    GetUsers {
+        pubkeys: Vec<String>,
+    },
 
     Error {
         error: String,
@@ -92,6 +101,10 @@ pub async fn read_loop(
 
             ServerMethod::GetMessages { channel_id, chunk } => {
                 message::get_messages(server, verifying_key, socket, channel_id, chunk).await?;
+            }
+
+            ServerMethod::GetUsers { pubkeys } => {
+                user::get_users(server, verifying_key, socket, pubkeys).await?;
             }
         }
 
