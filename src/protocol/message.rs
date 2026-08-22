@@ -40,6 +40,7 @@ pub async fn send_message(
     let stored = StoredMessage {
         id: uuid::Uuid::new_v4().to_string(),
         author: crate::signature::to_string(&verifying_key),
+        is_edited: false,
         data: message,
     };
 
@@ -74,6 +75,92 @@ pub async fn get_messages(
         },
     )
     .await?;
+
+    Ok(())
+}
+
+pub async fn edit_message(
+    server: &Arc<Server>,
+    verifying_key: VerifyingKey,
+    message_id: String,
+    channel_id: String,
+    new_content: String,
+    new_signature: String,
+) -> anyhow::Result<()> {
+    let existing = server
+        .message_store
+        .get_message(&channel_id, &message_id)?
+        .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
+
+    let author_pubkey = crate::signature::to_string(&verifying_key);
+    if existing.author != author_pubkey {
+        anyhow::bail!("Not authorized to edit this message");
+    }
+
+    let server_pubkey_string = crate::signature::to_string(&server.key.verifying_key());
+    let signed_string = format!(
+        "{}@{}@{}",
+        existing.data.timestamp, server_pubkey_string, new_content
+    );
+
+    let signature = crate::signature::from_string_sig(&new_signature)
+        .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
+
+    verifying_key
+        .verify(signed_string.as_bytes(), &signature)
+        .map_err(|_| anyhow::anyhow!("Signature verification failed"))?;
+
+    server
+        .message_store
+        .update_message(&channel_id, &message_id, &new_content, &new_signature)?;
+
+    let updated = StoredMessage {
+        id: message_id,
+        author: author_pubkey,
+        is_edited: true,
+        data: MessageData {
+            content: new_content,
+            timestamp: existing.data.timestamp,
+            signature: new_signature,
+        },
+    };
+
+    server
+        .broadcast(&ClientMethod::MessageEdited {
+            channel_id: channel_id.clone(),
+            message: updated,
+        })
+        .await?;
+
+    Ok(())
+}
+
+pub async fn delete_message(
+    server: &Arc<Server>,
+    verifying_key: VerifyingKey,
+    message_id: String,
+    channel_id: String,
+) -> anyhow::Result<()> {
+    let existing = server
+        .message_store
+        .get_message(&channel_id, &message_id)?
+        .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
+
+    let author_pubkey = crate::signature::to_string(&verifying_key);
+    if existing.author != author_pubkey {
+        anyhow::bail!("Not authorized to delete this message");
+    }
+
+    server
+        .message_store
+        .delete_message(&channel_id, &message_id)?;
+
+    server
+        .broadcast(&ClientMethod::MessageDeleted {
+            channel_id: channel_id.clone(),
+            message_id,
+        })
+        .await?;
 
     Ok(())
 }

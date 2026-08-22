@@ -22,6 +22,10 @@ pub enum ClientMethod {
         hostname: String,
     },
 
+    Error {
+        error: Cow<'static, str>,
+    },
+
     Messages {
         messages: HashMap<String, Vec<StoredMessage>>,
     },
@@ -30,8 +34,14 @@ pub enum ClientMethod {
         users: HashMap<String, ClientMeta>,
     },
 
-    Error {
-        error: Cow<'static, str>,
+    MessageEdited {
+        channel_id: String,
+        message: StoredMessage,
+    },
+
+    MessageDeleted {
+        channel_id: String,
+        message_id: String,
     },
 }
 
@@ -44,6 +54,10 @@ pub enum ServerMethod {
 
         timestamp: u64,
         hostname: String,
+    },
+
+    Error {
+        error: String,
     },
 
     SendMessage {
@@ -62,8 +76,16 @@ pub enum ServerMethod {
         pubkeys: Vec<String>,
     },
 
-    Error {
-        error: String,
+    EditMessage {
+        message_id: String,
+        channel_id: String,
+        content: String,
+        signature: String,
+    },
+
+    DeleteMessage {
+        message_id: String,
+        channel_id: String,
     },
 }
 
@@ -101,6 +123,30 @@ pub async fn read_loop(
 
             ServerMethod::GetMessages { channel_id, chunk } => {
                 message::get_messages(server, verifying_key, socket, channel_id, chunk).await?;
+            }
+
+            ServerMethod::DeleteMessage {
+                message_id,
+                channel_id,
+            } => {
+                message::delete_message(server, verifying_key, message_id, channel_id).await?;
+            }
+
+            ServerMethod::EditMessage {
+                message_id,
+                channel_id,
+                content,
+                signature,
+            } => {
+                message::edit_message(
+                    server,
+                    verifying_key,
+                    message_id,
+                    channel_id,
+                    content,
+                    signature,
+                )
+                .await?;
             }
 
             ServerMethod::GetUsers { pubkeys } => {
