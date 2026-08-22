@@ -12,7 +12,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use tokio::{sync::Mutex, task::JoinSet};
 
 use crate::{
-    data::{config::Config, messages::MessageStore},
+    data::{config::Config, messages::MessageStore, users::UserMetaStore},
     protocol::{ClientMethod, read_loop, send_socket},
     types::ClientMeta,
 };
@@ -29,6 +29,7 @@ pub struct Server {
     pub config: Config,
     pub clients: Mutex<HashMap<VerifyingKey, Arc<UserConnections>>>,
     pub message_store: MessageStore,
+    pub user_store: UserMetaStore,
 }
 
 impl Server {
@@ -38,6 +39,7 @@ impl Server {
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
             message_store: MessageStore::new(PathBuf::from("messages"))?,
+            user_store: UserMetaStore::new(PathBuf::from("users.db"))?,
         }))
     }
 }
@@ -49,6 +51,14 @@ impl Server {
         ws.on_upgrade(move |socket: WebSocket| async move {
             match UserConnections::initialize(&s, socket).await {
                 Ok((client, public_key, meta)) => {
+                    if let Err(e) = s
+                        .user_store
+                        .upsert_user(&crate::signature::to_string(&public_key), &meta)
+                        .await
+                    {
+                        eprintln!("Failed to upsert client: {e}");
+                    }
+
                     let client = Arc::new(Mutex::new(client));
 
                     let mut clients_meta = s.clients.lock().await;

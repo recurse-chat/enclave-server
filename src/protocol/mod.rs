@@ -9,6 +9,7 @@ use crate::{data::messages::StoredMessage, server::Server, types::ClientMeta};
 
 pub mod initialize;
 pub mod message;
+pub mod user;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
@@ -21,12 +22,26 @@ pub enum ClientMethod {
         hostname: String,
     },
 
+    Error {
+        error: Cow<'static, str>,
+    },
+
     Messages {
         messages: HashMap<String, Vec<StoredMessage>>,
     },
 
-    Error {
-        error: Cow<'static, str>,
+    Users {
+        users: HashMap<String, ClientMeta>,
+    },
+
+    MessageEdited {
+        channel_id: String,
+        message: StoredMessage,
+    },
+
+    MessageDeleted {
+        channel_id: String,
+        message_id: String,
     },
 }
 
@@ -41,6 +56,10 @@ pub enum ServerMethod {
         hostname: String,
     },
 
+    Error {
+        error: String,
+    },
+
     SendMessage {
         channel_id: String,
         data: crate::data::messages::MessageData,
@@ -53,8 +72,20 @@ pub enum ServerMethod {
 
     Meta(ClientMeta),
 
-    Error {
-        error: String,
+    GetUsers {
+        pubkeys: Vec<String>,
+    },
+
+    EditMessage {
+        message_id: String,
+        channel_id: String,
+        content: String,
+        signature: String,
+    },
+
+    DeleteMessage {
+        message_id: String,
+        channel_id: String,
     },
 }
 
@@ -92,6 +123,34 @@ pub async fn read_loop(
 
             ServerMethod::GetMessages { channel_id, chunk } => {
                 message::get_messages(server, verifying_key, socket, channel_id, chunk).await?;
+            }
+
+            ServerMethod::DeleteMessage {
+                message_id,
+                channel_id,
+            } => {
+                message::delete_message(server, verifying_key, message_id, channel_id).await?;
+            }
+
+            ServerMethod::EditMessage {
+                message_id,
+                channel_id,
+                content,
+                signature,
+            } => {
+                message::edit_message(
+                    server,
+                    verifying_key,
+                    message_id,
+                    channel_id,
+                    content,
+                    signature,
+                )
+                .await?;
+            }
+
+            ServerMethod::GetUsers { pubkeys } => {
+                user::get_users(server, verifying_key, socket, pubkeys).await?;
             }
         }
 
