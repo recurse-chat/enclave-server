@@ -19,8 +19,9 @@ pub struct ServerMeta {
 #[serde(tag = "kind")]
 #[serde(rename_all = "camelCase")]
 pub enum ChannelKind {
-    Text,
     Category { channels: Vec<Channel> },
+    Voice { max_users: u8 },
+    Text,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
