@@ -25,32 +25,27 @@ impl Server {
                 continue; // too short to even contain a pincode, drop silently
             }
 
-            let pin_bytes: [u8; 8] = buf[..8].try_into().unwrap();
-            let pin = u64::from_be_bytes(pin_bytes);
-            let payload = &buf[8..len];
+        let pin_bytes: [u8; 8] = buf[..8].try_into().unwrap();
+        let pin = u64::from_be_bytes(pin_bytes);
 
-            // Resolve the sender's identity + channel for this pin.
-            // First packet for a pin consumes it (single-use) and binds the address.
-            let sender = {
-                let mut pins = self.voice_pins.lock().await;
+        // First packet carries the pin for authentication; subsequent packets
+        // are raw audio identified by UDP address alone.
+        let (sender_pubkey, channel_id, payload) = {
+            let mut pins = self.voice_pins.lock().await;
 
-                if let Some((pubkey, channel_id)) = pins.remove(&pin) {
-                    Some((pubkey, channel_id))
-                } else {
-                    None
+            if let Some((pubkey, channel_id)) = pins.remove(&pin) {
+                // First packet: pin consumed, strip 8-byte prefix
+                (pubkey, channel_id, &buf[8..len])
+            } else {
+                drop(pins);
+
+                // Not a first-time pin — match by address
+                match self.find_voice_sender(&addr).await {
+                    Some((pubkey, channel_id)) => (pubkey, channel_id, &buf[..]),
+                    None => continue,
                 }
-            };
-
-            let (sender_pubkey, channel_id) = match sender {
-                Some(v) => v,
-
-                // Not a first-time pin — check if this addr is already a known
-                // voice participant, so we know who's speaking and where to relay.
-                None => match self.find_voice_sender(&addr).await {
-                    Some(v) => v,
-                    None => continue, // unknown pin, unknown addr — drop
-                },
-            };
+            }
+        };
 
             let clients = self.clients.lock().await;
             let Some(user) = clients.get(&sender_pubkey).cloned() else {
@@ -81,11 +76,11 @@ impl Server {
         None
     }
 
-    /// Sends `payload` to every other voice participant currently in `channel_id`.
-    async fn relay_voice(&self, sender: &VerifyingKey, channel_id: &str, payload: &[u8]) {
+    /// Sends `payload` to every voice participant currently in `channel_id`.
+    async fn relay_voice(&self, _sender: &VerifyingKey, channel_id: &str, payload: &[u8]) {
         let clients = self.clients.lock().await;
 
-        for (pubkey, user) in clients.iter() {
+        for (_pubkey, user) in clients.iter() {
             // if pubkey == sender {
             //     continue;
             // }
