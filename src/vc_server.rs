@@ -4,7 +4,12 @@ use anyhow::Context;
 use ed25519_dalek::VerifyingKey;
 use tokio::net::UdpSocket;
 
-use crate::server::Server;
+use crate::{
+    protocol::{ClientMethod, send_socket},
+    server::Server,
+};
+
+use tokio::time::Instant;
 
 impl Server {
     pub async fn start_udp_server(self: Arc<Self>) -> anyhow::Result<()> {
@@ -21,8 +26,6 @@ impl Server {
         loop {
             let (len, addr) = self.get_voice_socket()?.recv_from(&mut buf).await?;
 
-            eprintln!("[vc] UDP packet received: {len} bytes from {addr}");
-
             if len < 8 {
                 eprintln!("[vc] dropping packet too short for pin");
                 continue;
@@ -35,18 +38,13 @@ impl Server {
                 let mut pins = self.voice_pins.lock().await;
 
                 if let Some((pubkey, channel_id)) = pins.remove(&pin) {
-                    eprintln!("[vc] pin {pin} authenticated for channel {channel_id}");
                     (pubkey, channel_id, &buf[8..len])
                 } else {
                     drop(pins);
 
                     match self.find_voice_sender(&addr).await {
-                        Some((pubkey, channel_id)) => {
-                            eprintln!("[vc] known sender in channel {channel_id}");
-                            (pubkey, channel_id, &buf[..])
-                        }
+                        Some((pubkey, channel_id)) => (pubkey, channel_id, &buf[..]),
                         None => {
-                            eprintln!("[vc] unknown pin {pin} and unknown addr {addr}, dropping");
                             continue;
                         }
                     }
@@ -60,9 +58,14 @@ impl Server {
             };
             drop(clients);
 
-            *user.voice.lock().await = Some((addr, channel_id.clone()));
+            *user.voice.lock().await = Some(crate::server::VoiceConnection {
+                addr,
+                channel_id: channel_id.clone(),
+                last_speaking_sent: Instant::now(),
+            });
 
-            self.relay_voice(&sender_pubkey, &channel_id, payload).await;
+            self.relay_voice(&sender_pubkey, &channel_id, payload)
+                .await?;
         }
     }
 
@@ -72,9 +75,9 @@ impl Server {
         let clients = self.clients.lock().await;
 
         for (pubkey, user) in clients.iter() {
-            if let Some((user_addr, channel)) = &*user.voice.lock().await {
-                if *user_addr == *addr {
-                    return Some((*pubkey, channel.clone()));
+            if let Some(voice) = &*user.voice.lock().await {
+                if *addr == voice.addr {
+                    return Some((*pubkey, voice.channel_id.clone()));
                 }
             }
         }
@@ -83,27 +86,43 @@ impl Server {
     }
 
     /// Sends `payload` to every voice participant currently in `channel_id`.
-    async fn relay_voice(&self, _sender: &VerifyingKey, channel_id: &str, payload: &[u8]) {
+    async fn relay_voice(
+        &self,
+        sender: &VerifyingKey,
+        channel_id: &str,
+        payload: &[u8],
+    ) -> anyhow::Result<()> {
         let clients = self.clients.lock().await;
 
-        let mut sent = 0;
         for (_pubkey, user) in clients.iter() {
-            let Some((addr, channel)) = &*user.voice.lock().await else {
+            let Some(voice) = &mut *user.voice.lock().await else {
                 continue;
             };
 
-            if channel_id != channel {
+            if channel_id != voice.channel_id {
                 continue;
             }
 
-            let _ = self.udp_send_to(addr, payload).await;
-            sent += 1;
+            let now = Instant::now();
+
+            if now.duration_since(voice.last_speaking_sent).as_millis() >= 1000 {
+                for conn in user.connections.lock().await.values() {
+                    let _ = send_socket(
+                        &mut *conn.lock().await,
+                        &ClientMethod::Speaking {
+                            pubkey: crate::crypto::to_string(sender),
+                        },
+                    )
+                    .await;
+                }
+            }
+
+            voice.last_speaking_sent = now;
+
+            let _ = self.udp_send_to(&voice.addr, payload).await;
         }
 
-        eprintln!(
-            "[vc] relayed {} bytes to {sent} users in {channel_id}",
-            payload.len()
-        );
+        Ok(())
     }
 
     pub fn get_voice_socket(&self) -> anyhow::Result<&UdpSocket> {

@@ -14,6 +14,7 @@ use tokio::{
     net::UdpSocket,
     sync::{Mutex, OnceCell},
     task::JoinSet,
+    time::Instant,
 };
 
 use crate::{
@@ -22,12 +23,18 @@ use crate::{
     types::ClientMeta,
 };
 
+pub struct VoiceConnection {
+    pub addr: SocketAddr,
+    pub channel_id: String,
+    pub last_speaking_sent: Instant,
+}
+
 pub struct UserConnections {
     pub meta: ClientMeta,
     pub counter: AtomicU16,
     pub public_key: VerifyingKey,
     pub connections: Mutex<HashMap<u16, Arc<Mutex<WebSocket>>>>,
-    pub voice: Mutex<Option<(SocketAddr, String)>>,
+    pub voice: Mutex<Option<VoiceConnection>>,
 }
 
 pub struct Server {

@@ -48,6 +48,10 @@ pub enum ClientMethod {
         channel_id: String,
         pin: u64,
     },
+
+    Speaking {
+        pubkey: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
