@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    net::SocketAddr,
     path::PathBuf,
     sync::{Arc, atomic::AtomicU16},
 };
@@ -9,7 +10,11 @@ use axum::{
     response::Response,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use tokio::{sync::Mutex, task::JoinSet};
+use tokio::{
+    net::UdpSocket,
+    sync::{Mutex, OnceCell},
+    task::JoinSet,
+};
 
 use crate::{
     data::{config::Config, messages::MessageStore, users::UserMetaStore},
@@ -22,6 +27,7 @@ pub struct UserConnections {
     pub counter: AtomicU16,
     pub public_key: VerifyingKey,
     pub connections: Mutex<HashMap<u16, Arc<Mutex<WebSocket>>>>,
+    pub voice: Mutex<Option<(SocketAddr, String)>>,
 }
 
 pub struct Server {
@@ -31,6 +37,7 @@ pub struct Server {
     pub voice_pins: Mutex<HashMap<u64, (VerifyingKey, String)>>,
     pub message_store: MessageStore,
     pub user_store: UserMetaStore,
+    pub voice_socket: OnceCell<UdpSocket>,
 }
 
 impl Server {
@@ -42,6 +49,7 @@ impl Server {
             voice_pins: Mutex::new(HashMap::new()),
             message_store: MessageStore::new(PathBuf::from("messages"))?,
             user_store: UserMetaStore::new(PathBuf::from("users.db"))?,
+            voice_socket: OnceCell::new(),
         }))
     }
 }
@@ -73,6 +81,7 @@ impl Server {
                                 public_key: public_key,
                                 counter: AtomicU16::new(0),
                                 connections: Mutex::new(HashMap::new()),
+                                voice: Mutex::new(None),
                             })
                         })
                         .clone();
