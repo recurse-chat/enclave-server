@@ -16,44 +16,50 @@ impl Server {
 
         let mut buf = [0u8; 4096];
 
-        println!("UDP server started");
+        eprintln!("[vc] UDP server listening on port {}", self.config.port);
 
         loop {
             let (len, addr) = self.get_voice_socket()?.recv_from(&mut buf).await?;
 
+            eprintln!("[vc] UDP packet received: {len} bytes from {addr}");
+
             if len < 8 {
-                continue; // too short to even contain a pincode, drop silently
+                eprintln!("[vc] dropping packet too short for pin");
+                continue;
             }
 
-        let pin_bytes: [u8; 8] = buf[..8].try_into().unwrap();
-        let pin = u64::from_be_bytes(pin_bytes);
+            let pin_bytes: [u8; 8] = buf[..8].try_into().unwrap();
+            let pin = u64::from_be_bytes(pin_bytes);
 
-        // First packet carries the pin for authentication; subsequent packets
-        // are raw audio identified by UDP address alone.
-        let (sender_pubkey, channel_id, payload) = {
-            let mut pins = self.voice_pins.lock().await;
+            let (sender_pubkey, channel_id, payload) = {
+                let mut pins = self.voice_pins.lock().await;
 
-            if let Some((pubkey, channel_id)) = pins.remove(&pin) {
-                // First packet: pin consumed, strip 8-byte prefix
-                (pubkey, channel_id, &buf[8..len])
-            } else {
-                drop(pins);
+                if let Some((pubkey, channel_id)) = pins.remove(&pin) {
+                    eprintln!("[vc] pin {pin} authenticated for channel {channel_id}");
+                    (pubkey, channel_id, &buf[8..len])
+                } else {
+                    drop(pins);
 
-                // Not a first-time pin — match by address
-                match self.find_voice_sender(&addr).await {
-                    Some((pubkey, channel_id)) => (pubkey, channel_id, &buf[..]),
-                    None => continue,
+                    match self.find_voice_sender(&addr).await {
+                        Some((pubkey, channel_id)) => {
+                            eprintln!("[vc] known sender in channel {channel_id}");
+                            (pubkey, channel_id, &buf[..])
+                        }
+                        None => {
+                            eprintln!("[vc] unknown pin {pin} and unknown addr {addr}, dropping");
+                            continue;
+                        }
+                    }
                 }
-            }
-        };
+            };
 
             let clients = self.clients.lock().await;
             let Some(user) = clients.get(&sender_pubkey).cloned() else {
-                continue; // pin referenced a user that's since disconnected
+                eprintln!("[vc] sender pubkey not found in clients, dropping");
+                continue;
             };
             drop(clients);
 
-            // Record/refresh this user's known voice address + channel.
             *user.voice.lock().await = Some((addr, channel_id.clone()));
 
             self.relay_voice(&sender_pubkey, &channel_id, payload).await;
@@ -80,11 +86,8 @@ impl Server {
     async fn relay_voice(&self, _sender: &VerifyingKey, channel_id: &str, payload: &[u8]) {
         let clients = self.clients.lock().await;
 
+        let mut sent = 0;
         for (_pubkey, user) in clients.iter() {
-            // if pubkey == sender {
-            //     continue;
-            // }
-
             let Some((addr, channel)) = &*user.voice.lock().await else {
                 continue;
             };
@@ -94,7 +97,13 @@ impl Server {
             }
 
             let _ = self.udp_send_to(addr, payload).await;
+            sent += 1;
         }
+
+        eprintln!(
+            "[vc] relayed {} bytes to {sent} users in {channel_id}",
+            payload.len()
+        );
     }
 
     pub fn get_voice_socket(&self) -> anyhow::Result<&UdpSocket> {

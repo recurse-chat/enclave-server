@@ -163,7 +163,7 @@ pub async fn read_loop(
             }
 
             ServerMethod::JoinVoice { channel_id } => {
-                let pin = rand::random();
+                let pin = rand::random::<u64>() % (1 << 53);
 
                 server
                     .voice_pins
