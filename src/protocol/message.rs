@@ -24,13 +24,13 @@ pub async fn send_message(
         );
     }
 
-    let server_pubkey_string = crate::signature::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         message.timestamp, server_pubkey_string, message.content
     );
 
-    let signature = crate::signature::from_string_sig(&message.signature)
+    let signature = crate::crypto::from_string_sig(&message.signature)
         .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
 
     verifying_key
@@ -39,7 +39,7 @@ pub async fn send_message(
 
     let stored = StoredMessage {
         id: uuid::Uuid::new_v4().to_string(),
-        author: crate::signature::to_string(&verifying_key),
+        author: crate::crypto::to_string(&verifying_key),
         is_edited: false,
         data: message,
     };
@@ -92,18 +92,18 @@ pub async fn edit_message(
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
-    let author_pubkey = crate::signature::to_string(&verifying_key);
+    let author_pubkey = crate::crypto::to_string(&verifying_key);
     if existing.author != author_pubkey {
         anyhow::bail!("Not authorized to edit this message");
     }
 
-    let server_pubkey_string = crate::signature::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         existing.data.timestamp, server_pubkey_string, new_content
     );
 
-    let signature = crate::signature::from_string_sig(&new_signature)
+    let signature = crate::crypto::from_string_sig(&new_signature)
         .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
 
     verifying_key
@@ -146,7 +146,7 @@ pub async fn delete_message(
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
-    let author_pubkey = crate::signature::to_string(&verifying_key);
+    let author_pubkey = crate::crypto::to_string(&verifying_key);
     if existing.author != author_pubkey {
         anyhow::bail!("Not authorized to delete this message");
     }

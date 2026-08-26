@@ -35,7 +35,7 @@ pub struct Server {
 impl Server {
     pub async fn new() -> anyhow::Result<Arc<Self>> {
         Ok(Arc::new(Self {
-            key: crate::signature::get().await?,
+            key: crate::crypto::get().await?,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
             message_store: MessageStore::new(PathBuf::from("messages"))?,
@@ -53,7 +53,7 @@ impl Server {
                 Ok((client, public_key, meta)) => {
                     if let Err(e) = s
                         .user_store
-                        .upsert_user(&crate::signature::to_string(&public_key), &meta)
+                        .upsert_user(&crate::crypto::to_string(&public_key), &meta)
                         .await
                     {
                         eprintln!("Failed to upsert client: {e}");

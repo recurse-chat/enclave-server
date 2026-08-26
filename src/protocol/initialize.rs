@@ -66,7 +66,7 @@ impl UserConnections {
             return Err(anyhow::anyhow!("Client's hostname wasn't correct"));
         }
 
-        let Ok(public_key) = crate::signature::from_string(&public_key_string) else {
+        let Ok(public_key) = crate::crypto::from_string(&public_key_string) else {
             send_socket(
                 &mut socket,
                 &ClientMethod::Error {
@@ -81,7 +81,7 @@ impl UserConnections {
         if public_key
             .verify_strict(
                 format!("{timestamp}@{hostname}").as_bytes(),
-                &crate::signature::from_string_sig(&signature)?,
+                &crate::crypto::from_string_sig(&signature)?,
             )
             .is_err()
         {
@@ -100,8 +100,8 @@ impl UserConnections {
             send_socket(
                 &mut socket,
                 &ClientMethod::Initialized {
-                    public_key: crate::signature::to_string(&server.key.verifying_key()),
-                    signature: crate::signature::to_string_sig(&server.key.sign(
+                    public_key: crate::crypto::to_string(&server.key.verifying_key()),
+                    signature: crate::crypto::to_string_sig(&server.key.sign(
                         format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
                     )),
 
