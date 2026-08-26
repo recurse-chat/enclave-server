@@ -28,6 +28,7 @@ pub struct Server {
     pub key: SigningKey,
     pub config: Config,
     pub clients: Mutex<HashMap<VerifyingKey, Arc<UserConnections>>>,
+    pub voice_pins: Mutex<HashMap<u64, (VerifyingKey, String)>>,
     pub message_store: MessageStore,
     pub user_store: UserMetaStore,
 }
@@ -38,6 +39,7 @@ impl Server {
             key: crate::crypto::get().await?,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
+            voice_pins: Mutex::new(HashMap::new()),
             message_store: MessageStore::new(PathBuf::from("messages"))?,
             user_store: UserMetaStore::new(PathBuf::from("users.db"))?,
         }))

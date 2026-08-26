@@ -43,6 +43,11 @@ pub enum ClientMethod {
         channel_id: String,
         message_id: String,
     },
+
+    JoinVoice {
+        channel_id: String,
+        pin: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +90,10 @@ pub enum ServerMethod {
 
     DeleteMessage {
         message_id: String,
+        channel_id: String,
+    },
+
+    JoinVoice {
         channel_id: String,
     },
 }
@@ -151,6 +160,22 @@ pub async fn read_loop(
 
             ServerMethod::GetUsers { pubkeys } => {
                 user::get_users(server, verifying_key, socket, pubkeys).await?;
+            }
+
+            ServerMethod::JoinVoice { channel_id } => {
+                let pin = rand::random();
+
+                server
+                    .voice_pins
+                    .lock()
+                    .await
+                    .insert(pin, (verifying_key, channel_id.clone()));
+
+                send_socket(
+                    &mut *socket.lock().await,
+                    &ClientMethod::JoinVoice { channel_id, pin },
+                )
+                .await?;
             }
         }
 
