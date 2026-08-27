@@ -105,7 +105,7 @@ impl Server {
 
             let now = Instant::now();
 
-            if now.duration_since(voice.last_speaking_sent).as_millis() >= 1000 {
+            if now.duration_since(voice.last_speaking_sent).as_millis() >= 600 {
                 for conn in user.connections.lock().await.values() {
                     let _ = send_socket(
                         &mut *conn.lock().await,
@@ -115,9 +115,9 @@ impl Server {
                     )
                     .await;
                 }
-            }
 
-            voice.last_speaking_sent = now;
+                voice.last_speaking_sent = now;
+            }
 
             let _ = self.udp_send_to(&voice.addr, payload).await;
         }

@@ -49,6 +49,11 @@ pub enum ClientMethod {
         pin: u64,
     },
 
+    UserJoinedVoice {
+        channel_id: String,
+        pubkey: String,
+    },
+
     Speaking {
         pubkey: String,
     },
@@ -167,19 +172,31 @@ pub async fn read_loop(
             }
 
             ServerMethod::JoinVoice { channel_id } => {
-                let pin = rand::random::<u64>() % (1 << 53);
+                {
+                    let pin = rand::random::<u64>() % (1 << 53);
+
+                    server
+                        .voice_pins
+                        .lock()
+                        .await
+                        .insert(pin, (verifying_key, channel_id.clone()));
+
+                    send_socket(
+                        &mut *socket.lock().await,
+                        &ClientMethod::JoinVoice {
+                            channel_id: channel_id.clone(),
+                            pin,
+                        },
+                    )
+                    .await?;
+                }
 
                 server
-                    .voice_pins
-                    .lock()
-                    .await
-                    .insert(pin, (verifying_key, channel_id.clone()));
-
-                send_socket(
-                    &mut *socket.lock().await,
-                    &ClientMethod::JoinVoice { channel_id, pin },
-                )
-                .await?;
+                    .broadcast(&ClientMethod::UserJoinedVoice {
+                        channel_id,
+                        pubkey: crate::crypto::to_string(&verifying_key),
+                    })
+                    .await?;
             }
         }
 
