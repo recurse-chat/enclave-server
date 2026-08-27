@@ -4,6 +4,7 @@ pub mod protocol;
 pub mod server;
 pub mod types;
 pub mod vc_server;
+pub mod ws;
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},

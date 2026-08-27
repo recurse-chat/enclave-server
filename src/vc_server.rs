@@ -4,10 +4,7 @@ use anyhow::Context;
 use ed25519_dalek::VerifyingKey;
 use tokio::net::UdpSocket;
 
-use crate::{
-    protocol::{ClientMethod, send_socket},
-    server::Server,
-};
+use crate::{protocol::ClientMethod, server::Server};
 
 use tokio::time::Instant;
 
@@ -107,13 +104,11 @@ impl Server {
 
             if now.duration_since(voice.last_speaking_sent).as_millis() >= 600 {
                 for conn in user.connections.lock().await.values() {
-                    let _ = send_socket(
-                        &mut *conn.lock().await,
-                        &ClientMethod::Speaking {
+                    let _ = conn
+                        .send(&ClientMethod::Speaking {
                             pubkey: crate::crypto::to_string(sender),
-                        },
-                    )
-                    .await;
+                        })
+                        .await;
                 }
 
                 voice.last_speaking_sent = now;

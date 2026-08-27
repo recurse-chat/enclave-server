@@ -15,3 +15,4 @@ bs58 = "0.5.1"
 tower-http = { version = "0.7.0", features = ["fs", "cors"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1.24.1", features = ["v4"] }
+futures-util = "0.3.34"

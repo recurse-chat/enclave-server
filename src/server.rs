@@ -19,8 +19,9 @@ use tokio::{
 
 use crate::{
     data::{config::Config, messages::MessageStore, users::UserMetaStore},
-    protocol::{ClientMethod, read_loop, send_socket},
+    protocol::{ClientMethod, read_loop},
     types::ClientMeta,
+    ws::EnclaveWebSocket,
 };
 
 pub struct VoiceConnection {
@@ -33,7 +34,7 @@ pub struct UserConnections {
     pub meta: ClientMeta,
     pub counter: AtomicU16,
     pub public_key: VerifyingKey,
-    pub connections: Mutex<HashMap<u16, Arc<Mutex<WebSocket>>>>,
+    pub connections: Mutex<HashMap<u16, Arc<crate::ws::EnclaveWebSocket>>>,
     pub voice: Mutex<Option<VoiceConnection>>,
 }
 
@@ -66,7 +67,7 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            match UserConnections::initialize(&s, socket).await {
+            match UserConnections::initialize(&s, Arc::new(EnclaveWebSocket::new(socket))).await {
                 Ok((client, public_key, meta)) => {
                     if let Err(e) = s
                         .user_store
@@ -75,8 +76,6 @@ impl Server {
                     {
                         eprintln!("Failed to upsert client: {e}");
                     }
-
-                    let client = Arc::new(Mutex::new(client));
 
                     let mut clients_meta = s.clients.lock().await;
 
@@ -154,7 +153,7 @@ impl Server {
 impl UserConnections {
     pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
         for (_, conn) in self.connections.lock().await.iter() {
-            send_socket(&mut *conn.lock().await, message).await?;
+            conn.send(message).await?;
         }
 
         Ok(())
@@ -162,7 +161,7 @@ impl UserConnections {
 
     pub async fn send_to(&self, id: u16, message: &ClientMethod) -> anyhow::Result<bool> {
         if let Some(conn) = self.connections.lock().await.get(&id) {
-            send_socket(&mut *conn.lock().await, message).await?;
+            conn.send(message).await?;
 
             Ok(true)
         } else {

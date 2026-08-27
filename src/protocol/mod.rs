@@ -1,9 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
-use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Mutex;
 
 use crate::{data::messages::StoredMessage, server::Server, types::ClientMeta};
 
@@ -110,22 +108,16 @@ pub enum ServerMethod {
 pub async fn read_loop(
     server: &Arc<Server>,
     verifying_key: VerifyingKey,
-    socket: &Arc<Mutex<WebSocket>>,
+    socket: &Arc<crate::ws::EnclaveWebSocket>,
 ) -> anyhow::Result<()> {
-    let mut socket_lock = socket.lock().await;
-
-    while let Some(message) = read_socket(&mut *socket_lock).await? {
-        drop(socket_lock);
-
+    while let Some(message) = socket.read().await? {
         match message {
             ServerMethod::Initialize { .. } => {
-                send_socket(
-                    &mut *socket.lock().await,
-                    &ClientMethod::Error {
+                socket
+                    .send(&ClientMethod::Error {
                         error: Cow::Borrowed("Already initialized"),
-                    },
-                )
-                .await?;
+                    })
+                    .await?;
             }
 
             #[allow(unused_variables)]
@@ -181,14 +173,12 @@ pub async fn read_loop(
                         .await
                         .insert(pin, (verifying_key, channel_id.clone()));
 
-                    send_socket(
-                        &mut *socket.lock().await,
-                        &ClientMethod::JoinVoice {
+                    socket
+                        .send(&ClientMethod::JoinVoice {
                             channel_id: channel_id.clone(),
                             pin,
-                        },
-                    )
-                    .await?;
+                        })
+                        .await?;
                 }
 
                 server
@@ -199,49 +189,7 @@ pub async fn read_loop(
                     .await?;
             }
         }
-
-        socket_lock = socket.lock().await;
     }
-
-    Ok(())
-}
-
-pub async fn read_socket(socket: &mut WebSocket) -> anyhow::Result<Option<ServerMethod>> {
-    match socket.recv().await.transpose()? {
-        Some(Message::Text(text)) => match serde_json::from_str(&text.to_string()) {
-            Ok(msg) => Ok(Some(msg)),
-
-            Err(e) => {
-                send_socket(
-                    socket,
-                    &ClientMethod::Error {
-                        error: Cow::Owned(format!("Unable to parse message: {e}")),
-                    },
-                )
-                .await?;
-
-                Ok(None)
-            }
-        },
-
-        Some(Message::Ping(v)) => {
-            socket.send(Message::Pong(v)).await?;
-
-            Ok(None)
-        }
-
-        Some(_) => Ok(None),
-
-        None => Ok(None),
-    }
-}
-
-pub async fn send_socket(socket: &mut WebSocket, message: &ClientMethod) -> anyhow::Result<()> {
-    socket
-        .send(Message::Text(Utf8Bytes::from(serde_json::to_string(
-            message,
-        )?)))
-        .await?;
 
     Ok(())
 }

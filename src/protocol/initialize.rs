@@ -3,10 +3,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use axum::extract::ws::WebSocket;
 use ed25519_dalek::{Signer, VerifyingKey};
 
-use crate::server::Server;
+use crate::{server::Server, ws::EnclaveWebSocket};
 
 use super::*;
 use crate::server::UserConnections;
@@ -14,23 +13,21 @@ use crate::server::UserConnections;
 impl UserConnections {
     pub async fn initialize(
         server: &Arc<Server>,
-        mut socket: WebSocket,
-    ) -> anyhow::Result<(WebSocket, VerifyingKey, ClientMeta)> {
+        socket: Arc<EnclaveWebSocket>,
+    ) -> anyhow::Result<(Arc<EnclaveWebSocket>, VerifyingKey, ClientMeta)> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
             signature,
 
             timestamp,
             hostname,
-        }) = read_socket(&mut socket).await?
+        }) = socket.read().await?
         else {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Error {
+            socket
+                .send(&ClientMethod::Error {
                     error: Cow::Borrowed("Initialization required"),
-                },
-            )
-            .await?;
+                })
+                .await?;
 
             return Err(anyhow::anyhow!(
                 "Failed to initialize: Client sent the wrong method"
@@ -40,23 +37,20 @@ impl UserConnections {
         let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
         if server_timestamp.saturating_sub(timestamp) > 2000 {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Error {
+            socket
+                .send(&ClientMethod::Error {
                     error: Cow::Borrowed(
                         "Timestamp doesn't match, make sure it's in secs and is (<= 2secs)",
                     ),
-                },
-            )
-            .await?;
+                })
+                .await?;
 
             return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
         }
 
         if hostname != server.config.public_hostname || !server.config.hostnames.contains(&hostname)
         {
-            send_socket(
-                &mut socket,
+            socket.send(
                 &ClientMethod::Error {
                     error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname: {}", server.config.public_hostname)),
                 },
@@ -67,13 +61,11 @@ impl UserConnections {
         }
 
         let Ok(public_key) = crate::crypto::from_string(&public_key_string) else {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Error {
+            socket
+                .send(&ClientMethod::Error {
                     error: Cow::Borrowed("Invalid public key"),
-                },
-            )
-            .await?;
+                })
+                .await?;
 
             return Err(anyhow::anyhow!("Invalid public key"));
         };
@@ -85,21 +77,18 @@ impl UserConnections {
             )
             .is_err()
         {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Error {
+            socket
+                .send(&ClientMethod::Error {
                     error: Cow::Borrowed("Invalid signature"),
-                },
-            )
-            .await?;
+                })
+                .await?;
 
             return Err(anyhow::anyhow!("Invalid signature"));
         }
 
         {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Initialized {
+            socket
+                .send(&ClientMethod::Initialized {
                     public_key: crate::crypto::to_string(&server.key.verifying_key()),
                     signature: crate::crypto::to_string_sig(&server.key.sign(
                         format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
@@ -107,19 +96,16 @@ impl UserConnections {
 
                     timestamp: server_timestamp,
                     hostname,
-                },
-            )
-            .await?;
+                })
+                .await?;
         }
 
-        let Some(ServerMethod::Meta(meta)) = read_socket(&mut socket).await? else {
-            send_socket(
-                &mut socket,
-                &ClientMethod::Error {
+        let Some(ServerMethod::Meta(meta)) = socket.read().await? else {
+            socket
+                .send(&ClientMethod::Error {
                     error: Cow::Borrowed("Expected meta"),
-                },
-            )
-            .await?;
+                })
+                .await?;
 
             return Err(anyhow::anyhow!(
                 "Expected meta, client called another method"
