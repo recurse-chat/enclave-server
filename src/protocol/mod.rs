@@ -8,6 +8,7 @@ use crate::{data::messages::StoredMessage, server::Server, types::ClientMeta};
 pub mod initialize;
 pub mod message;
 pub mod user;
+pub mod voice;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
@@ -48,6 +49,11 @@ pub enum ClientMethod {
     },
 
     UserJoinedVoice {
+        channel_id: String,
+        pubkey: String,
+    },
+
+    UserLeftVoice {
         channel_id: String,
         pubkey: String,
     },
@@ -103,6 +109,8 @@ pub enum ServerMethod {
     JoinVoice {
         channel_id: String,
     },
+
+    LeaveVoice,
 }
 
 pub async fn read_loop(
@@ -164,29 +172,11 @@ pub async fn read_loop(
             }
 
             ServerMethod::JoinVoice { channel_id } => {
-                {
-                    let pin = rand::random::<u64>() % (1 << 53);
+                voice::join(server, verifying_key, socket, channel_id).await?;
+            }
 
-                    server
-                        .voice_pins
-                        .lock()
-                        .await
-                        .insert(pin, (verifying_key, channel_id.clone()));
-
-                    socket
-                        .send(&ClientMethod::JoinVoice {
-                            channel_id: channel_id.clone(),
-                            pin,
-                        })
-                        .await?;
-                }
-
-                server
-                    .broadcast(&ClientMethod::UserJoinedVoice {
-                        channel_id,
-                        pubkey: crate::crypto::to_string(&verifying_key),
-                    })
-                    .await?;
+            ServerMethod::LeaveVoice => {
+                voice::leave(server, verifying_key).await?;
             }
         }
     }
