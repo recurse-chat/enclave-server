@@ -55,11 +55,19 @@ impl Server {
             };
             drop(clients);
 
-            *user.voice.lock().await = Some(crate::server::VoiceConnection {
-                addr,
-                channel_id: channel_id.clone(),
-                last_speaking_sent: Instant::now(),
-            });
+            let mut voice = user.voice.lock().await;
+
+            if let Some(voice) = &mut *voice {
+                voice.addr = addr;
+            } else {
+                *voice = Some(crate::server::VoiceConnection {
+                    addr,
+                    channel_id: channel_id.clone(),
+                    last_speaking_sent: Instant::now(),
+                });
+            }
+
+            drop(voice);
 
             self.relay_voice(&sender_pubkey, &channel_id, payload)
                 .await?;
@@ -104,11 +112,10 @@ impl Server {
 
             if now.duration_since(voice.last_speaking_sent).as_millis() >= 600 {
                 for conn in user.connections.lock().await.values() {
-                    let _ = conn
-                        .send(&ClientMethod::Speaking {
-                            pubkey: crate::crypto::to_string(sender),
-                        })
-                        .await;
+                    conn.send(&ClientMethod::Speaking {
+                        pubkey: crate::crypto::to_string(sender),
+                    })
+                    .await?;
                 }
 
                 voice.last_speaking_sent = now;
