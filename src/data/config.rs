@@ -19,18 +19,32 @@ impl Config {
                 name: "New Server".to_string(),
                 description: String::new(),
 
-                channels: vec![Channel {
-                    id: "text-channels".to_string(),
-                    name: "Text Channels".to_string(),
+                channels: vec![
+                    Channel {
+                        id: "text-channels".to_string(),
+                        name: "Text Channels".to_string(),
 
-                    data: ChannelKind::Category {
-                        channels: vec![Channel {
-                            id: "general".to_string(),
-                            name: "General".to_string(),
-                            data: ChannelKind::Text,
-                        }],
+                        data: ChannelKind::Category {
+                            channels: vec![Channel {
+                                id: "general".to_string(),
+                                name: "General".to_string(),
+                                data: ChannelKind::Text,
+                            }],
+                        },
                     },
-                }],
+                    Channel {
+                        id: "voice-channels".to_string(),
+                        name: "Voice Channels".to_string(),
+
+                        data: ChannelKind::Category {
+                            channels: vec![Channel {
+                                id: "vc-1".to_string(),
+                                name: "VC 1".to_string(),
+                                data: ChannelKind::Voice { max_users: 255 },
+                            }],
+                        },
+                    },
+                ],
             },
 
             port: 3415,

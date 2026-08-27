@@ -1,8 +1,10 @@
+pub mod crypto;
 pub mod data;
 pub mod protocol;
 pub mod server;
-pub mod signature;
 pub mod types;
+pub mod vc_server;
+pub mod ws;
 
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -26,6 +28,8 @@ use crate::server::Server;
 async fn main() -> anyhow::Result<()> {
     let server = Server::new().await?;
 
+    let udp_server = tokio::spawn(server.clone().start_udp_server());
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -45,6 +49,8 @@ async fn main() -> anyhow::Result<()> {
     .await?;
 
     axum::serve(listener, app).await?;
+
+    udp_server.abort();
 
     Ok(())
 }

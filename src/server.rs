@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    net::SocketAddr,
     path::PathBuf,
     sync::{Arc, atomic::AtomicU16},
 };
@@ -9,37 +10,54 @@ use axum::{
     response::Response,
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use tokio::{sync::Mutex, task::JoinSet};
+use tokio::{
+    net::UdpSocket,
+    sync::{Mutex, OnceCell},
+    task::JoinSet,
+    time::Instant,
+};
 
 use crate::{
     data::{config::Config, messages::MessageStore, users::UserMetaStore},
-    protocol::{ClientMethod, read_loop, send_socket},
+    protocol::{ClientMethod, read_loop},
     types::ClientMeta,
+    ws::EnclaveWebSocket,
 };
+
+pub struct VoiceConnection {
+    pub addr: SocketAddr,
+    pub channel_id: String,
+    pub last_speaking_sent: Instant,
+}
 
 pub struct UserConnections {
     pub meta: ClientMeta,
     pub counter: AtomicU16,
     pub public_key: VerifyingKey,
-    pub connections: Mutex<HashMap<u16, Arc<Mutex<WebSocket>>>>,
+    pub connections: Mutex<HashMap<u16, Arc<crate::ws::EnclaveWebSocket>>>,
+    pub voice: Mutex<Option<VoiceConnection>>,
 }
 
 pub struct Server {
     pub key: SigningKey,
     pub config: Config,
     pub clients: Mutex<HashMap<VerifyingKey, Arc<UserConnections>>>,
+    pub voice_pins: Mutex<HashMap<u64, (VerifyingKey, String)>>,
     pub message_store: MessageStore,
     pub user_store: UserMetaStore,
+    pub voice_socket: OnceCell<UdpSocket>,
 }
 
 impl Server {
     pub async fn new() -> anyhow::Result<Arc<Self>> {
         Ok(Arc::new(Self {
-            key: crate::signature::get().await?,
+            key: crate::crypto::get().await?,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
+            voice_pins: Mutex::new(HashMap::new()),
             message_store: MessageStore::new(PathBuf::from("messages"))?,
             user_store: UserMetaStore::new(PathBuf::from("users.db"))?,
+            voice_socket: OnceCell::new(),
         }))
     }
 }
@@ -49,17 +67,15 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            match UserConnections::initialize(&s, socket).await {
+            match UserConnections::initialize(&s, Arc::new(EnclaveWebSocket::new(socket))).await {
                 Ok((client, public_key, meta)) => {
                     if let Err(e) = s
                         .user_store
-                        .upsert_user(&crate::signature::to_string(&public_key), &meta)
+                        .upsert_user(&crate::crypto::to_string(&public_key), &meta)
                         .await
                     {
                         eprintln!("Failed to upsert client: {e}");
                     }
-
-                    let client = Arc::new(Mutex::new(client));
 
                     let mut clients_meta = s.clients.lock().await;
 
@@ -71,6 +87,7 @@ impl Server {
                                 public_key: public_key,
                                 counter: AtomicU16::new(0),
                                 connections: Mutex::new(HashMap::new()),
+                                voice: Mutex::new(None),
                             })
                         })
                         .clone();
@@ -136,7 +153,7 @@ impl Server {
 impl UserConnections {
     pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
         for (_, conn) in self.connections.lock().await.iter() {
-            send_socket(&mut *conn.lock().await, message).await?;
+            conn.send(message).await?;
         }
 
         Ok(())
@@ -144,7 +161,7 @@ impl UserConnections {
 
     pub async fn send_to(&self, id: u16, message: &ClientMethod) -> anyhow::Result<bool> {
         if let Some(conn) = self.connections.lock().await.get(&id) {
-            send_socket(&mut *conn.lock().await, message).await?;
+            conn.send(message).await?;
 
             Ok(true)
         } else {

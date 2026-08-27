@@ -1,17 +1,15 @@
 use crate::data::messages::{MessageData, StoredMessage};
-use crate::protocol::{ClientMethod, send_socket};
+use crate::protocol::ClientMethod;
 use crate::server::Server;
-use axum::extract::ws::WebSocket;
 use ed25519_dalek::{Verifier, VerifyingKey};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::Mutex;
 
 pub async fn send_message(
     server: &Arc<Server>,
     verifying_key: VerifyingKey,
-    _socket: &Arc<Mutex<WebSocket>>,
+    _socket: &Arc<crate::ws::EnclaveWebSocket>,
     message: MessageData,
     channel_id: String,
 ) -> anyhow::Result<()> {
@@ -24,13 +22,13 @@ pub async fn send_message(
         );
     }
 
-    let server_pubkey_string = crate::signature::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         message.timestamp, server_pubkey_string, message.content
     );
 
-    let signature = crate::signature::from_string_sig(&message.signature)
+    let signature = crate::crypto::from_string_sig(&message.signature)
         .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
 
     verifying_key
@@ -39,7 +37,7 @@ pub async fn send_message(
 
     let stored = StoredMessage {
         id: uuid::Uuid::new_v4().to_string(),
-        author: crate::signature::to_string(&verifying_key),
+        author: crate::crypto::to_string(&verifying_key),
         is_edited: false,
         data: message,
     };
@@ -58,7 +56,7 @@ pub async fn send_message(
 pub async fn get_messages(
     server: &Arc<Server>,
     _verifying_key: VerifyingKey,
-    socket: &Arc<Mutex<WebSocket>>,
+    socket: &Arc<crate::ws::EnclaveWebSocket>,
     channel_id: String,
     chunk: u32,
 ) -> anyhow::Result<()> {
@@ -68,13 +66,11 @@ pub async fn get_messages(
         .message_store
         .get_recent_messages(&channel_id, CHUNK_SIZE, chunk)?;
 
-    send_socket(
-        &mut *socket.lock().await,
-        &ClientMethod::Messages {
+    socket
+        .send(&ClientMethod::Messages {
             messages: HashMap::from([(channel_id, messages)]),
-        },
-    )
-    .await?;
+        })
+        .await?;
 
     Ok(())
 }
@@ -92,18 +88,18 @@ pub async fn edit_message(
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
-    let author_pubkey = crate::signature::to_string(&verifying_key);
+    let author_pubkey = crate::crypto::to_string(&verifying_key);
     if existing.author != author_pubkey {
         anyhow::bail!("Not authorized to edit this message");
     }
 
-    let server_pubkey_string = crate::signature::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         existing.data.timestamp, server_pubkey_string, new_content
     );
 
-    let signature = crate::signature::from_string_sig(&new_signature)
+    let signature = crate::crypto::from_string_sig(&new_signature)
         .map_err(|_| anyhow::anyhow!("Invalid signature encoding"))?;
 
     verifying_key
@@ -146,7 +142,7 @@ pub async fn delete_message(
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
-    let author_pubkey = crate::signature::to_string(&verifying_key);
+    let author_pubkey = crate::crypto::to_string(&verifying_key);
     if existing.author != author_pubkey {
         anyhow::bail!("Not authorized to delete this message");
     }
