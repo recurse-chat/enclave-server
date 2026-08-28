@@ -13,7 +13,7 @@ use crate::server::UserConnections;
 impl UserConnections {
     pub async fn initialize(
         server: &Arc<Server>,
-        socket: &Arc<EnclaveWebSocket>,
+        socket: &EnclaveWebSocket,
     ) -> anyhow::Result<(VerifyingKey, ClientMeta)> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,

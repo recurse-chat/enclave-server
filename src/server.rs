@@ -18,6 +18,7 @@ use tokio::{
 };
 
 use crate::{
+    crypto::SessionCipher,
     data::{config::Config, messages::MessageStore, users::UserMetaStore},
     protocol::{ClientMethod, read_loop},
     types::ClientMeta,
@@ -35,6 +36,7 @@ pub struct UserConnections {
     pub counter: AtomicU16,
     pub public_key: VerifyingKey,
     pub connections: Mutex<HashMap<u16, Arc<crate::ws::EnclaveWebSocket>>>,
+    pub cihper: Arc<Mutex<SessionCipher>>,
     pub voice: Mutex<Option<VoiceConnection>>,
 }
 
@@ -74,7 +76,7 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            let client = match crate::crypto::crypto_handshake(&s, socket).await {
+            let mut client = match crate::crypto::crypto_handshake(&s, socket).await {
                 Ok(client) => client,
                 Err(err) => {
                     eprintln!("Failed to initialize crypto: {err}");
@@ -103,9 +105,14 @@ impl Server {
                                 counter: AtomicU16::new(0),
                                 connections: Mutex::new(HashMap::new()),
                                 voice: Mutex::new(None),
+                                cihper: client.cipher.clone(),
                             })
                         })
                         .clone();
+
+                    client.cipher = clients.cihper.clone();
+
+                    let client = Arc::new(client);
 
                     let conid = clients
                         .counter

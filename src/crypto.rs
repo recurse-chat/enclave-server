@@ -9,6 +9,7 @@ use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::{Signature, SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha512};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as X25519Public, SharedSecret, StaticSecret as X25519Secret};
 
 use crate::{server::Server, ws::EnclaveWebSocket};
@@ -138,7 +139,7 @@ impl SessionCipher {
 pub async fn crypto_handshake(
     server: &Arc<Server>,
     mut socket: WebSocket,
-) -> anyhow::Result<Arc<EnclaveWebSocket>> {
+) -> anyhow::Result<EnclaveWebSocket> {
     socket
         .send(axum::extract::ws::Message::Binary(
             server.x_keypair.0.to_bytes().to_vec().into(),
@@ -160,7 +161,7 @@ pub async fn crypto_handshake(
 
     let shared_secret = server.x_keypair.1.diffie_hellman(&client_pubkey);
 
-    let cipher = SessionCipher::new(&shared_secret)?;
+    let cipher = Arc::new(Mutex::new(SessionCipher::new(&shared_secret)?));
 
-    Ok(Arc::new(EnclaveWebSocket::new(socket, cipher)))
+    Ok(EnclaveWebSocket::new(socket, cipher))
 }

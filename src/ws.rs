@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::{
@@ -15,17 +15,17 @@ use crate::{
 pub struct EnclaveWebSocket {
     tx: Mutex<SplitSink<WebSocket, Message>>,
     rx: Mutex<SplitStream<WebSocket>>,
-    cihper: Mutex<SessionCipher>,
+    pub cipher: Arc<Mutex<SessionCipher>>,
 }
 
 impl EnclaveWebSocket {
-    pub fn new(ws: WebSocket, cipher: SessionCipher) -> Self {
+    pub fn new(ws: WebSocket, cipher: Arc<Mutex<SessionCipher>>) -> Self {
         let (tx, rx) = ws.split();
 
         Self {
             tx: Mutex::new(tx),
             rx: Mutex::new(rx),
-            cihper: Mutex::new(cipher),
+            cipher,
         }
     }
 
@@ -45,7 +45,7 @@ impl EnclaveWebSocket {
             },
 
             Some(Message::Binary(encrypted)) => {
-                let text = String::from_utf8(self.cihper.lock().await.decrypt(&encrypted)?)?;
+                let text = String::from_utf8(self.cipher.lock().await.decrypt(&encrypted)?)?;
 
                 match serde_json::from_str(&text.to_string()) {
                     Ok(msg) => Ok(Some(msg)),
@@ -76,7 +76,7 @@ impl EnclaveWebSocket {
     pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
         let text = serde_json::to_string(message)?;
 
-        let encrypted = self.cihper.lock().await.encrypt(text.as_bytes())?;
+        let encrypted = self.cipher.lock().await.encrypt(text.as_bytes())?;
 
         self.tx
             .lock()
