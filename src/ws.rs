@@ -5,7 +5,7 @@ use futures_util::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 use crate::protocol::{ClientMethod, ServerMethod};
 
@@ -61,5 +61,9 @@ impl EnclaveWebSocket {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn tx(&self) -> MutexGuard<'_, SplitSink<WebSocket, Message>> {
+        self.tx.lock().await
     }
 }

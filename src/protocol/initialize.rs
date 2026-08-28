@@ -4,6 +4,7 @@ use std::{
 };
 
 use ed25519_dalek::{Signer, VerifyingKey};
+use futures_util::SinkExt;
 
 use crate::{server::Server, ws::EnclaveWebSocket};
 
@@ -15,6 +16,16 @@ impl UserConnections {
         server: &Arc<Server>,
         socket: Arc<EnclaveWebSocket>,
     ) -> anyhow::Result<(Arc<EnclaveWebSocket>, VerifyingKey, ClientMeta)> {
+        {
+            socket
+                .tx()
+                .await
+                .send(axum::extract::ws::Message::Binary(
+                    server.key.verifying_key().to_bytes().to_vec().into(),
+                ))
+                .await?;
+        }
+
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
             signature,
