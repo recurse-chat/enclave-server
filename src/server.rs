@@ -74,9 +74,12 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            let Ok(client) = crate::crypto::crypto_handshake(&s, socket).await else {
-                eprintln!("Filed to initialize crypto");
-                return;
+            let client = match crate::crypto::crypto_handshake(&s, socket).await {
+                Ok(client) => client,
+                Err(err) => {
+                    eprintln!("Failed to initialize crypto: {err}");
+                    return;
+                }
             };
 
             match UserConnections::initialize(&s, &client).await {

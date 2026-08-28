@@ -151,7 +151,7 @@ pub async fn crypto_handshake(
         .transpose()?
         .ok_or(anyhow::anyhow!("Failed to get client x key"))?
     else {
-        return Err(anyhow::anyhow!(""));
+        return Err(anyhow::anyhow!("WS message is not binary"));
     };
 
     let client_pubkey = X25519Public::from(*raw_pubkey.as_array().ok_or(anyhow::anyhow!(
