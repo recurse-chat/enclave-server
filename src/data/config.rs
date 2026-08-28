@@ -8,7 +8,6 @@ use crate::types::{Channel, ChannelKind, ServerMeta};
 pub struct Config {
     pub meta: ServerMeta,
     pub port: u16,
-    pub public_hostname: String,
     pub hostnames: HashSet<String>,
 }
 
@@ -48,8 +47,6 @@ impl Config {
             },
 
             port: 3415,
-
-            public_hostname: "localhost:3415".to_string(),
 
             hostnames: HashSet::from_iter(["localhost:3415".to_string()]),
         }
