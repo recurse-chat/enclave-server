@@ -106,8 +106,6 @@ impl Server {
 
                     if let Err(e) = read_loop(&s, public_key, &client).await {
                         eprintln!("Failed to handle client: {e}");
-                    } else {
-                        println!("Client connection closed")
                     }
 
                     let mut clients_meta = s.clients.lock().await;

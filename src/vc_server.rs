@@ -121,6 +121,10 @@ impl Server {
                 voice.last_speaking_sent = now;
             }
 
+            if *sender == user.public_key {
+                continue;
+            }
+
             let _ = self.udp_send_to(&voice.addr, payload).await;
         }
 
