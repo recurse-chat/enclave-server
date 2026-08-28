@@ -13,8 +13,8 @@ use crate::server::UserConnections;
 impl UserConnections {
     pub async fn initialize(
         server: &Arc<Server>,
-        socket: Arc<EnclaveWebSocket>,
-    ) -> anyhow::Result<(Arc<EnclaveWebSocket>, VerifyingKey, ClientMeta)> {
+        socket: &EnclaveWebSocket,
+    ) -> anyhow::Result<(VerifyingKey, ClientMeta)> {
         let Some(ServerMethod::Initialize {
             public_key: public_key_string,
             signature,
@@ -48,11 +48,10 @@ impl UserConnections {
             return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
         }
 
-        if hostname != server.config.public_hostname || !server.config.hostnames.contains(&hostname)
-        {
+        if !server.config.hostnames.contains(&hostname) {
             socket.send(
                 &ClientMethod::Error {
-                    error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname: {}", server.config.public_hostname)),
+                    error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname(s): {}", server.config.hostnames.clone().into_iter().collect::<Vec<_>>().join(", "))),
                 },
             )
             .await?;
@@ -112,6 +111,6 @@ impl UserConnections {
             ));
         };
 
-        Ok((socket, public_key, meta))
+        Ok((public_key, meta))
     }
 }
