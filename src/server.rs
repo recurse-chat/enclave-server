@@ -21,8 +21,8 @@ use crate::{
     data::{config::Config, messages::MessageStore, users::UserMetaStore},
     protocol::{ClientMethod, read_loop},
     types::ClientMeta,
-    ws::EnclaveWebSocket,
 };
+use x25519_dalek::{PublicKey as X25519Public, StaticSecret as X25519Secret};
 
 pub struct VoiceConnection {
     pub addr: SocketAddr,
@@ -40,6 +40,7 @@ pub struct UserConnections {
 
 pub struct Server {
     pub key: SigningKey,
+    pub x_keypair: (X25519Public, X25519Secret),
     pub config: Config,
     pub clients: Mutex<HashMap<VerifyingKey, Arc<UserConnections>>>,
     pub voice_pins: Mutex<HashMap<u64, (VerifyingKey, String)>>,
@@ -50,8 +51,14 @@ pub struct Server {
 
 impl Server {
     pub async fn new() -> anyhow::Result<Arc<Self>> {
+        let key = crate::crypto::get().await?;
         Ok(Arc::new(Self {
-            key: crate::crypto::get().await?,
+            x_keypair: (
+                crate::crypto::ed25519_verifying_key_to_x25519(&key.verifying_key())
+                    .ok_or(anyhow::anyhow!("Failed to convert ed pubkey to x"))?,
+                crate::crypto::ed25519_signing_key_to_x25519(&key),
+            ),
+            key,
             config: Config::get().await?,
             clients: Mutex::new(HashMap::new()),
             voice_pins: Mutex::new(HashMap::new()),
@@ -67,8 +74,13 @@ impl Server {
         let s = self.clone();
 
         ws.on_upgrade(move |socket: WebSocket| async move {
-            match UserConnections::initialize(&s, Arc::new(EnclaveWebSocket::new(socket))).await {
-                Ok((client, public_key, meta)) => {
+            let Ok(client) = crate::crypto::crypto_handshake(&s, socket).await else {
+                eprintln!("Filed to initialize crypto");
+                return;
+            };
+
+            match UserConnections::initialize(&s, &client).await {
+                Ok((public_key, meta)) => {
                     if let Err(e) = s
                         .user_store
                         .upsert_user(&crate::crypto::to_string(&public_key), &meta)
