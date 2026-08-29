@@ -79,6 +79,11 @@ impl VoiceServer {
             },
         );
 
+        log::debug!(
+            "User {} joined voice channel {channel_id} (pin allocated)",
+            crate::crypto::to_string(&public_key)
+        );
+
         pin
     }
 
@@ -93,6 +98,11 @@ impl VoiceServer {
             .channel_id;
 
         self.pins.lock().await.retain(|_, pin| pin.pubkey != public_key);
+
+        log::info!(
+            "User {} left voice channel {channel_id}",
+            crate::crypto::to_string(&public_key)
+        );
 
         Some(channel_id)
     }
@@ -109,13 +119,13 @@ impl VoiceServer {
 
         let mut buf = [0u8; 4096];
 
-        eprintln!("[vc] UDP server listening on port {port}");
+        log::info!("UDP voice server listening on port {port}");
 
         loop {
             let (len, addr) = self.get_voice_socket()?.recv_from(&mut buf).await?;
 
             if len < 8 {
-                eprintln!("[vc] dropping packet too short for pin");
+                log::warn!("Dropping voice packet too short for pin from {addr}");
                 continue;
             }
 
@@ -128,13 +138,17 @@ impl VoiceServer {
                 let mut pins = self.pins.lock().await;
 
                 if let Some(pin) = pins.remove(&pin) {
+                    log::debug!("Voice address {addr} bound via pin for user {}", crate::crypto::to_string(&pin.pubkey));
                     (pin.pubkey, pin.channel_id, &buf[8..len], true)
                 } else {
                     drop(pins);
 
                     match self.find_sender(&addr).await {
                         Some((pubkey, channel_id)) => (pubkey, channel_id, &buf[..len], false),
-                        None => continue,
+                        None => {
+                            log::warn!("Voice packet from unknown address {addr}");
+                            continue;
+                        }
                     }
                 }
             };
@@ -153,14 +167,14 @@ impl VoiceServer {
                 let participants = self.participants.lock().await;
                 participants.get(&sender_pubkey).map(|p| p.user.cipher.clone())
             }) else {
-                eprintln!("[vc] sender pubkey not found in participants, dropping");
+                log::warn!("Voice packet from user not in any channel, dropping");
                 continue;
             };
 
             let decrypted_payload = match cipher.lock().await.decrypt(payload) {
                 Ok(pt) => pt,
                 Err(e) => {
-                    eprintln!("[vc] dropping packet: decryption failed: {e}");
+                    log::warn!("Dropping voice packet: decryption failed: {e}");
                     continue;
                 }
             };
@@ -172,7 +186,7 @@ impl VoiceServer {
                     .relay_voice(&sender_pubkey, &channel_id, &decrypted_payload)
                     .await
                 {
-                    eprintln!("{e}");
+                    log::warn!("Voice relay error: {e}");
                 }
             });
         }

@@ -44,9 +44,15 @@ pub async fn send_message(
 
     server.store.messages.insert_message(&channel_id, &stored)?;
 
-server
-    .sessions
-    .broadcast(&ClientMethod::Messages {
+    log::info!(
+        "Message sent by {} in channel {channel_id} (id {})",
+        stored.author,
+        stored.id
+    );
+
+    server
+        .sessions
+        .broadcast(&ClientMethod::Messages {
             messages: HashMap::from([(channel_id, vec![stored])]),
         })
         .await?;
@@ -67,6 +73,8 @@ pub async fn get_messages(
         .store
         .messages
         .get_recent_messages(&channel_id, CHUNK_SIZE, chunk)?;
+
+    log::debug!("Serving {} messages for {channel_id} (chunk {chunk})", messages.len());
 
     socket
         .send(&ClientMethod::Messages {
@@ -114,6 +122,8 @@ pub async fn edit_message(
         .messages
         .update_message(&channel_id, &message_id, &new_content, &new_signature)?;
 
+    log::info!("Message {message_id} edited in channel {channel_id}");
+
     let updated = StoredMessage {
         id: message_id,
         author: author_pubkey,
@@ -125,9 +135,9 @@ pub async fn edit_message(
         },
     };
 
-server
-    .sessions
-    .broadcast(&ClientMethod::MessageEdited {
+    server
+        .sessions
+        .broadcast(&ClientMethod::MessageEdited {
             channel_id: channel_id.clone(),
             message: updated,
         })
@@ -158,9 +168,11 @@ pub async fn delete_message(
         .messages
         .delete_message(&channel_id, &message_id)?;
 
-server
-    .sessions
-    .broadcast(&ClientMethod::MessageDeleted {
+    log::info!("Message {message_id} deleted in channel {channel_id}");
+
+    server
+        .sessions
+        .broadcast(&ClientMethod::MessageDeleted {
             channel_id: channel_id.clone(),
             message_id,
         })

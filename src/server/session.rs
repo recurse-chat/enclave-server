@@ -75,6 +75,11 @@ impl SessionRegistry {
 
         user.connections.lock().await.insert(conid, client.clone());
 
+        log::debug!(
+            "Registered connection {conid} for user {}",
+            crate::crypto::to_string(&public_key)
+        );
+
         (client, conid)
     }
 
@@ -91,6 +96,11 @@ impl SessionRegistry {
         let mut connections = user.connections.lock().await;
         connections.remove(&conid);
 
+        log::debug!(
+            "Deregistered connection {conid} for user {}",
+            crate::crypto::to_string(&public_key)
+        );
+
         if connections.is_empty() {
             clients.remove(&public_key);
             true
@@ -104,7 +114,7 @@ impl SessionRegistry {
 
         for user in users {
             if let Err(e) = user.send(message).await {
-                eprintln!("Failed to send to a client: {:?}", e);
+                log::warn!("Failed to send to a client: {e:?}");
             }
         }
 

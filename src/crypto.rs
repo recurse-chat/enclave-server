@@ -20,8 +20,10 @@ pub async fn get() -> anyhow::Result<SigningKey> {
     if !private_key_path.exists() {
         let key = SigningKey::generate(&mut OsRng);
         tokio::fs::write(private_key_path, &key.to_bytes()).await?;
+        log::info!("Generated new server signing key at private.key");
         Ok(key)
     } else {
+        log::debug!("Loaded existing server signing key from private.key");
         Ok(SigningKey::from_bytes(
             &tokio::fs::read(private_key_path)
                 .await?
@@ -140,6 +142,8 @@ pub async fn crypto_handshake(
     server: &Arc<Server>,
     mut socket: WebSocket,
 ) -> anyhow::Result<EnclaveWebSocket> {
+    log::info!("Handshake: sending server x25519 public key");
+
     socket
         .send(axum::extract::ws::Message::Binary(
             server.identity.x25519.public.to_bytes().to_vec().into(),
@@ -159,9 +163,13 @@ pub async fn crypto_handshake(
         "Failed to get proper length of client x key"
     ))?);
 
+    log::debug!("Handshake: received client x25519 public key");
+
     let shared_secret = server.identity.x25519.secret.diffie_hellman(&client_pubkey);
 
     let cipher = Arc::new(Mutex::new(SessionCipher::new(&shared_secret)?));
+
+    log::info!("Handshake: session cipher established with client");
 
     Ok(EnclaveWebSocket::new(socket, cipher))
 }

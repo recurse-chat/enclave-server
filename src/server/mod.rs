@@ -46,7 +46,7 @@ impl Server {
             let client = match crate::crypto::crypto_handshake(&s, socket).await {
                 Ok(client) => client,
                 Err(err) => {
-                    eprintln!("Failed to initialize crypto: {err}");
+                    log::error!("Failed to initialize crypto: {err}");
                     return;
                 }
             };
@@ -59,30 +59,42 @@ impl Server {
                         .upsert_user(&crate::crypto::to_string(&public_key), &meta)
                         .await
                     {
-                        eprintln!("Failed to upsert client: {e}");
+                        log::error!("Failed to upsert client: {e}");
                     }
+
+                    let pubkey_string = crate::crypto::to_string(&public_key);
+
+                    log::info!("Client connected: {pubkey_string}");
 
                     let (client, conid) = s.sessions.register(public_key, meta, client).await;
 
                     if let Err(e) = read_loop(&s, public_key, &client).await {
-                        eprintln!("Failed to handle client: {e}");
+                        log::warn!("Client read loop errored: {e}");
                     }
 
-                    if s.sessions.deregister(public_key, conid).await
-                        && let Some(channel_id) = s.voice.remove(public_key).await
-                    {
-                        s.sessions
-                            .broadcast(&ClientMethod::UserLeftVoice {
-                                channel_id,
-                                pubkey: crate::crypto::to_string(&public_key),
-                            })
-                            .await
-                            .ok();
+                    if s.sessions.deregister(public_key, conid).await {
+                        log::debug!("Deregistered last connection for {pubkey_string}");
+
+                        if let Some(channel_id) = s.voice.remove(public_key).await {
+                            log::info!(
+                                "User left voice after disconnect: {pubkey_string} ({channel_id})"
+                            );
+
+                            s.sessions
+                                .broadcast(&ClientMethod::UserLeftVoice {
+                                    channel_id,
+                                    pubkey: pubkey_string.clone(),
+                                })
+                                .await
+                                .ok();
+                        }
                     }
+
+                    log::info!("Client disconnected: {pubkey_string}");
                 }
 
                 Err(e) => {
-                    eprintln!("Failed to initialize client: {e}")
+                    log::warn!("Failed to initialize client: {e}")
                 }
             }
         })

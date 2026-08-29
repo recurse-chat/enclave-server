@@ -25,6 +25,8 @@ pub async fn initialize(
         hostname,
     }) = socket.read().await?
     else {
+        log::warn!("Client sent the wrong method during initialization");
+
         socket
             .send(&ClientMethod::Error {
                 error: Cow::Borrowed("Initialization required"),
@@ -39,6 +41,8 @@ pub async fn initialize(
     let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
     if server_timestamp.saturating_sub(timestamp) > 2000 {
+        log::warn!("Client timestamp wasn't correct (server {server_timestamp}, client {timestamp})");
+
         socket
             .send(&ClientMethod::Error {
                 error: Cow::Borrowed(
@@ -51,6 +55,8 @@ pub async fn initialize(
     }
 
     if !server.config.hostnames.contains(&hostname) {
+        log::warn!("Client sent invalid hostname: {hostname}");
+
         socket.send(
             &ClientMethod::Error {
                 error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname(s): {}", server.config.hostnames.clone().into_iter().collect::<Vec<_>>().join(", "))),
@@ -62,6 +68,8 @@ pub async fn initialize(
     }
 
     let Ok(public_key) = crate::crypto::from_string(&public_key_string) else {
+        log::warn!("Client sent an invalid public key: {public_key_string}");
+
         socket
             .send(&ClientMethod::Error {
                 error: Cow::Borrowed("Invalid public key"),
@@ -78,6 +86,8 @@ pub async fn initialize(
         )
         .is_err()
     {
+        log::warn!("Client signature verification failed for {public_key_string}");
+
         socket
             .send(&ClientMethod::Error {
                 error: Cow::Borrowed("Invalid signature"),
@@ -86,6 +96,8 @@ pub async fn initialize(
 
         return Err(anyhow::anyhow!("Invalid signature"));
     }
+
+    log::info!("Client authenticated: {public_key_string} (hostname: {hostname})");
 
     {
         socket
@@ -102,6 +114,8 @@ pub async fn initialize(
     }
 
     let Some(ServerMethod::Meta(meta)) = socket.read().await? else {
+        log::warn!("Client {public_key_string} didn't send meta during initialization");
+
         socket
             .send(&ClientMethod::Error {
                 error: Cow::Borrowed("Expected meta"),

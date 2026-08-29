@@ -9,9 +9,13 @@ pub struct DataStore {
 
 impl DataStore {
     pub fn new() -> anyhow::Result<Self> {
-        Ok(Self {
+        let store = Self {
             messages: MessageStore::new(PathBuf::from("messages"))?,
             users: UserMetaStore::new(PathBuf::from("users.db"))?,
-        })
+        };
+
+        log::debug!("Opened data store (messages/, users.db)");
+
+        Ok(store)
     }
 }

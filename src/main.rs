@@ -25,6 +25,12 @@ use crate::server::Server;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
+    log::info!("Starting enclave-server v{}", env!("CARGO_PKG_VERSION"));
+
     let server = Server::new().await?;
 
     let udp_server = tokio::spawn(server.voice.clone().run(server.config.port));
@@ -47,7 +53,11 @@ async fn main() -> anyhow::Result<()> {
     ))
     .await?;
 
+    log::info!("HTTP/WS server listening on 0.0.0.0:{}", server.config.port);
+
     axum::serve(listener, app).await?;
+
+    log::info!("Shutting down UDP voice server");
 
     udp_server.abort();
 

@@ -18,6 +18,11 @@ pub async fn join(
 
     let pin = server.voice.join(verifying_key, user, &channel_id).await;
 
+    log::info!(
+        "User {} joining voice channel {channel_id}",
+        crate::crypto::to_string(&verifying_key)
+    );
+
     socket
         .send(&ClientMethod::JoinVoice {
             channel_id: channel_id.clone(),
@@ -38,6 +43,10 @@ pub async fn join(
 
 pub async fn leave(server: &Arc<Server>, verifying_key: VerifyingKey) -> anyhow::Result<()> {
     let Some(channel_id) = server.voice.remove(verifying_key).await else {
+        log::debug!(
+            "User {} requested LeaveVoice but wasn't in any channel",
+            crate::crypto::to_string(&verifying_key)
+        );
         return Ok(());
     };
 

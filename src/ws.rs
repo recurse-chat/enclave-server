@@ -31,26 +31,37 @@ impl EnclaveWebSocket {
 
     pub async fn read(&self) -> anyhow::Result<Option<ServerMethod>> {
         match self.rx.lock().await.next().await.transpose()? {
-            Some(Message::Text(text)) => match serde_json::from_str(&text.to_string()) {
-                Ok(msg) => Ok(Some(msg)),
+            Some(Message::Text(text)) => {
+                let text = text.to_string();
+                match serde_json::from_str::<ServerMethod>(&text) {
+                    Ok(msg) => {
+                        log::debug!("Received message: {msg:?}");
+                        Ok(Some(msg))
+                    }
 
-                Err(e) => {
-                    self.send(&ClientMethod::Error {
-                        error: Cow::Owned(format!("Unable to parse message: {e}")),
-                    })
-                    .await?;
+                    Err(e) => {
+                        log::warn!("Failed to parse client message: {e}");
+                        self.send(&ClientMethod::Error {
+                            error: Cow::Owned(format!("Unable to parse message: {e}")),
+                        })
+                        .await?;
 
-                    Ok(None)
+                        Ok(None)
+                    }
                 }
-            },
+            }
 
             Some(Message::Binary(encrypted)) => {
                 let text = String::from_utf8(self.cipher.lock().await.decrypt(&encrypted)?)?;
 
-                match serde_json::from_str(&text.to_string()) {
-                    Ok(msg) => Ok(Some(msg)),
+                match serde_json::from_str::<ServerMethod>(&text) {
+                    Ok(msg) => {
+                        log::debug!("Received message: {msg:?}");
+                        Ok(Some(msg))
+                    }
 
                     Err(e) => {
+                        log::warn!("Failed to parse client message: {e}");
                         self.send(&ClientMethod::Error {
                             error: Cow::Owned(format!("Unable to parse message: {e}")),
                         })
@@ -67,7 +78,10 @@ impl EnclaveWebSocket {
                 Ok(None)
             }
 
-            Some(_) => Ok(None),
+            Some(other) => {
+                log::debug!("Ignoring websocket message: {other:?}");
+                Ok(None)
+            }
 
             None => Ok(None),
         }
@@ -75,6 +89,8 @@ impl EnclaveWebSocket {
 
     pub async fn send(&self, message: &ClientMethod) -> anyhow::Result<()> {
         let text = serde_json::to_string(message)?;
+
+        log::debug!("Sending message: {message:?}");
 
         let encrypted = self.cipher.lock().await.encrypt(text.as_bytes())?;
 
