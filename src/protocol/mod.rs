@@ -118,9 +118,13 @@ pub async fn read_loop(
     verifying_key: VerifyingKey,
     socket: &Arc<crate::ws::EnclaveWebSocket>,
 ) -> anyhow::Result<()> {
+    let pubkey_string = crate::crypto::to_string(&verifying_key);
+
     while let Some(message) = socket.read().await? {
         match message {
             ServerMethod::Initialize { .. } => {
+                log::warn!("Client {pubkey_string} sent Initialize after already initializing");
+
                 socket
                     .send(&ClientMethod::Error {
                         error: Cow::Borrowed("Already initialized"),
@@ -132,7 +136,7 @@ pub async fn read_loop(
             ServerMethod::Meta(meta) => {}
 
             ServerMethod::Error { error } => {
-                eprintln!("Client error: {error}");
+                log::warn!("Client error (client {pubkey_string}): {error}");
             }
 
             ServerMethod::SendMessage { channel_id, data } => {

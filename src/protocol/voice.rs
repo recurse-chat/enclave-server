@@ -10,24 +10,28 @@ pub async fn join(
     socket: &Arc<crate::ws::EnclaveWebSocket>,
     channel_id: String,
 ) -> anyhow::Result<()> {
-    {
-        let pin = rand::random::<u64>() % (1 << 53);
+    let user = server
+        .sessions
+        .get(&verifying_key)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Not connected"))?;
 
-        server
-            .voice_pins
-            .lock()
-            .await
-            .insert(pin, (verifying_key, channel_id.clone()));
+    let pin = server.voice.join(verifying_key, user, &channel_id).await;
 
-        socket
-            .send(&ClientMethod::JoinVoice {
-                channel_id: channel_id.clone(),
-                pin,
-            })
-            .await?;
-    }
+    log::info!(
+        "User {} joining voice channel {channel_id}",
+        crate::crypto::to_string(&verifying_key)
+    );
+
+    socket
+        .send(&ClientMethod::JoinVoice {
+            channel_id: channel_id.clone(),
+            pin,
+        })
+        .await?;
 
     server
+        .sessions
         .broadcast(&ClientMethod::UserJoinedVoice {
             channel_id,
             pubkey: crate::crypto::to_string(&verifying_key),
@@ -38,25 +42,16 @@ pub async fn join(
 }
 
 pub async fn leave(server: &Arc<Server>, verifying_key: VerifyingKey) -> anyhow::Result<()> {
-    let Some(channel_id) = ({
-        let clients = server.clients.lock().await;
-
-        let Some(client) = clients.get(&verifying_key) else {
-            return Ok(());
-        };
-
-        client.voice.lock().await.take().map(|v| v.channel_id)
-    }) else {
+    let Some(channel_id) = server.voice.remove(verifying_key).await else {
+        log::debug!(
+            "User {} requested LeaveVoice but wasn't in any channel",
+            crate::crypto::to_string(&verifying_key)
+        );
         return Ok(());
     };
 
     server
-        .voice_pins
-        .lock()
-        .await
-        .retain(|_, v| v.0 != verifying_key);
-
-    server
+        .sessions
         .broadcast(&ClientMethod::UserLeftVoice {
             channel_id,
             pubkey: crate::crypto::to_string(&verifying_key),

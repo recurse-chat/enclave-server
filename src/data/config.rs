@@ -58,11 +58,17 @@ impl Config {
         if !config_path.exists() {
             let config = Config::new();
             tokio::fs::write(config_path, &serde_json::to_string_pretty(&config)?).await?;
+            log::info!("No config.json found, wrote default config");
             Ok(config)
         } else {
-            Ok(serde_json::from_str(
-                &tokio::fs::read_to_string(config_path).await?,
-            )?)
+            let config: Config =
+                serde_json::from_str(&tokio::fs::read_to_string(config_path).await?)?;
+            log::info!(
+                "Loaded config: {} (port {})",
+                config.meta.name,
+                config.port
+            );
+            Ok(config)
         }
     }
 }

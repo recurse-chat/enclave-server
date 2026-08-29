@@ -10,7 +10,9 @@ pub async fn get_users(
     socket: &Arc<crate::ws::EnclaveWebSocket>,
     pubkeys: Vec<String>,
 ) -> anyhow::Result<()> {
-    let users = server.user_store.get_users(&pubkeys).await?;
+    let users = server.store.users.get_users(&pubkeys).await?;
+
+    log::debug!("Serving {} user infos", users.len());
 
     socket.send(&ClientMethod::Users { users }).await?;
 
