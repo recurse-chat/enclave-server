@@ -5,11 +5,7 @@ use std::{
 
 use ed25519_dalek::{Signer, VerifyingKey};
 
-use crate::{
-    server::Server,
-    types::ClientMeta,
-    ws::EnclaveWebSocket,
-};
+use crate::{server::Server, types::ClientMeta, ws::EnclaveWebSocket};
 
 use super::*;
 
@@ -41,7 +37,9 @@ pub async fn initialize(
     let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
     if server_timestamp.saturating_sub(timestamp) > 2000 {
-        log::warn!("Client timestamp wasn't correct (server {server_timestamp}, client {timestamp})");
+        log::warn!(
+            "Client timestamp wasn't correct (server {server_timestamp}, client {timestamp})"
+        );
 
         socket
             .send(&ClientMethod::Error {
@@ -103,9 +101,11 @@ pub async fn initialize(
         socket
             .send(&ClientMethod::Initialized {
                 public_key: crate::crypto::to_string(&server.identity.key.verifying_key()),
-                signature: crate::crypto::to_string_sig(&server.identity.key.sign(
-                    format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
-                )),
+                signature: crate::crypto::to_string_sig(
+                    &server.identity.key.sign(
+                        format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
+                    ),
+                ),
 
                 timestamp: server_timestamp,
                 hostname,
@@ -127,11 +127,11 @@ pub async fn initialize(
         ));
     };
 
-    for pin in server.voice.pins.lock().await.values() {
+    for (pubkey, conn) in server.voice.participants.lock().await.iter() {
         socket
             .send(&ClientMethod::UserJoinedVoice {
-                channel_id: pin.channel_id.clone(),
-                pubkey: crate::crypto::to_string(&pin.pubkey),
+                channel_id: conn.channel_id.clone(),
+                pubkey: crate::crypto::to_string(pubkey),
             })
             .await?;
     }

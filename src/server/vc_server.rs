@@ -18,6 +18,7 @@ use crate::{
     server::UserConnections,
 };
 
+#[derive(Debug)]
 pub struct VoicePin {
     pub pubkey: VerifyingKey,
     pub channel_id: String,
