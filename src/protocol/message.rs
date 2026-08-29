@@ -22,7 +22,7 @@ pub async fn send_message(
         );
     }
 
-    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.identity.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         message.timestamp, server_pubkey_string, message.content
@@ -42,10 +42,11 @@ pub async fn send_message(
         data: message,
     };
 
-    server.message_store.insert_message(&channel_id, &stored)?;
+    server.store.messages.insert_message(&channel_id, &stored)?;
 
-    server
-        .broadcast(&ClientMethod::Messages {
+server
+    .sessions
+    .broadcast(&ClientMethod::Messages {
             messages: HashMap::from([(channel_id, vec![stored])]),
         })
         .await?;
@@ -63,7 +64,8 @@ pub async fn get_messages(
     const CHUNK_SIZE: u32 = 16;
 
     let messages = server
-        .message_store
+        .store
+        .messages
         .get_recent_messages(&channel_id, CHUNK_SIZE, chunk)?;
 
     socket
@@ -84,7 +86,8 @@ pub async fn edit_message(
     new_signature: String,
 ) -> anyhow::Result<()> {
     let existing = server
-        .message_store
+        .store
+        .messages
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
@@ -93,7 +96,7 @@ pub async fn edit_message(
         anyhow::bail!("Not authorized to edit this message");
     }
 
-    let server_pubkey_string = crate::crypto::to_string(&server.key.verifying_key());
+    let server_pubkey_string = crate::crypto::to_string(&server.identity.key.verifying_key());
     let signed_string = format!(
         "{}@{}@{}",
         existing.data.timestamp, server_pubkey_string, new_content
@@ -107,7 +110,8 @@ pub async fn edit_message(
         .map_err(|_| anyhow::anyhow!("Signature verification failed"))?;
 
     server
-        .message_store
+        .store
+        .messages
         .update_message(&channel_id, &message_id, &new_content, &new_signature)?;
 
     let updated = StoredMessage {
@@ -121,8 +125,9 @@ pub async fn edit_message(
         },
     };
 
-    server
-        .broadcast(&ClientMethod::MessageEdited {
+server
+    .sessions
+    .broadcast(&ClientMethod::MessageEdited {
             channel_id: channel_id.clone(),
             message: updated,
         })
@@ -138,7 +143,8 @@ pub async fn delete_message(
     channel_id: String,
 ) -> anyhow::Result<()> {
     let existing = server
-        .message_store
+        .store
+        .messages
         .get_message(&channel_id, &message_id)?
         .ok_or_else(|| anyhow::anyhow!("Message not found"))?;
 
@@ -148,11 +154,13 @@ pub async fn delete_message(
     }
 
     server
-        .message_store
+        .store
+        .messages
         .delete_message(&channel_id, &message_id)?;
 
-    server
-        .broadcast(&ClientMethod::MessageDeleted {
+server
+    .sessions
+    .broadcast(&ClientMethod::MessageDeleted {
             channel_id: channel_id.clone(),
             message_id,
         })

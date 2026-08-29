@@ -142,7 +142,7 @@ pub async fn crypto_handshake(
 ) -> anyhow::Result<EnclaveWebSocket> {
     socket
         .send(axum::extract::ws::Message::Binary(
-            server.x_keypair.0.to_bytes().to_vec().into(),
+            server.identity.x25519.public.to_bytes().to_vec().into(),
         ))
         .await?;
 
@@ -159,7 +159,7 @@ pub async fn crypto_handshake(
         "Failed to get proper length of client x key"
     ))?);
 
-    let shared_secret = server.x_keypair.1.diffie_hellman(&client_pubkey);
+    let shared_secret = server.identity.x25519.secret.diffie_hellman(&client_pubkey);
 
     let cipher = Arc::new(Mutex::new(SessionCipher::new(&shared_secret)?));
 

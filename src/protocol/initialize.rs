@@ -5,121 +5,122 @@ use std::{
 
 use ed25519_dalek::{Signer, VerifyingKey};
 
-use crate::{server::Server, ws::EnclaveWebSocket};
+use crate::{
+    server::Server,
+    types::ClientMeta,
+    ws::EnclaveWebSocket,
+};
 
 use super::*;
-use crate::server::UserConnections;
 
-impl UserConnections {
-    pub async fn initialize(
-        server: &Arc<Server>,
-        socket: &EnclaveWebSocket,
-    ) -> anyhow::Result<(VerifyingKey, ClientMeta)> {
-        let Some(ServerMethod::Initialize {
-            public_key: public_key_string,
-            signature,
+pub async fn initialize(
+    server: &Arc<Server>,
+    socket: &EnclaveWebSocket,
+) -> anyhow::Result<(VerifyingKey, ClientMeta)> {
+    let Some(ServerMethod::Initialize {
+        public_key: public_key_string,
+        signature,
 
-            timestamp,
-            hostname,
-        }) = socket.read().await?
-        else {
-            socket
-                .send(&ClientMethod::Error {
-                    error: Cow::Borrowed("Initialization required"),
-                })
-                .await?;
-
-            return Err(anyhow::anyhow!(
-                "Failed to initialize: Client sent the wrong method"
-            ));
-        };
-
-        let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
-
-        if server_timestamp.saturating_sub(timestamp) > 2000 {
-            socket
-                .send(&ClientMethod::Error {
-                    error: Cow::Borrowed(
-                        "Timestamp doesn't match, make sure it's in secs and is (<= 2secs)",
-                    ),
-                })
-                .await?;
-
-            return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
-        }
-
-        if !server.config.hostnames.contains(&hostname) {
-            socket.send(
-                &ClientMethod::Error {
-                    error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname(s): {}", server.config.hostnames.clone().into_iter().collect::<Vec<_>>().join(", "))),
-                },
-            )
+        timestamp,
+        hostname,
+    }) = socket.read().await?
+    else {
+        socket
+            .send(&ClientMethod::Error {
+                error: Cow::Borrowed("Initialization required"),
+            })
             .await?;
 
-            return Err(anyhow::anyhow!("Client's hostname wasn't correct"));
-        }
+        return Err(anyhow::anyhow!(
+            "Failed to initialize: Client sent the wrong method"
+        ));
+    };
 
-        let Ok(public_key) = crate::crypto::from_string(&public_key_string) else {
-            socket
-                .send(&ClientMethod::Error {
-                    error: Cow::Borrowed("Invalid public key"),
-                })
-                .await?;
+    let server_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
-            return Err(anyhow::anyhow!("Invalid public key"));
-        };
+    if server_timestamp.saturating_sub(timestamp) > 2000 {
+        socket
+            .send(&ClientMethod::Error {
+                error: Cow::Borrowed(
+                    "Timestamp doesn't match, make sure it's in secs and is (<= 2secs)",
+                ),
+            })
+            .await?;
 
-        if public_key
-            .verify_strict(
-                format!("{timestamp}@{hostname}").as_bytes(),
-                &crate::crypto::from_string_sig(&signature)?,
-            )
-            .is_err()
-        {
-            socket
-                .send(&ClientMethod::Error {
-                    error: Cow::Borrowed("Invalid signature"),
-                })
-                .await?;
-
-            return Err(anyhow::anyhow!("Invalid signature"));
-        }
-
-        {
-            socket
-                .send(&ClientMethod::Initialized {
-                    public_key: crate::crypto::to_string(&server.key.verifying_key()),
-                    signature: crate::crypto::to_string_sig(&server.key.sign(
-                        format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
-                    )),
-
-                    timestamp: server_timestamp,
-                    hostname,
-                })
-                .await?;
-        }
-
-        let Some(ServerMethod::Meta(meta)) = socket.read().await? else {
-            socket
-                .send(&ClientMethod::Error {
-                    error: Cow::Borrowed("Expected meta"),
-                })
-                .await?;
-
-            return Err(anyhow::anyhow!(
-                "Expected meta, client called another method"
-            ));
-        };
-
-        for (pubkey, channel_id) in server.voice_pins.lock().await.values() {
-            socket
-                .send(&ClientMethod::UserJoinedVoice {
-                    channel_id: channel_id.clone(),
-                    pubkey: crate::crypto::to_string(pubkey),
-                })
-                .await?;
-        }
-
-        Ok((public_key, meta))
+        return Err(anyhow::anyhow!("Client tampstamp wasn't correct"));
     }
+
+    if !server.config.hostnames.contains(&hostname) {
+        socket.send(
+            &ClientMethod::Error {
+                error: Cow::Owned(format!("Invalid Hostname, to avoid man-in-the-middle attacks, please use the correct hostname(s): {}", server.config.hostnames.clone().into_iter().collect::<Vec<_>>().join(", "))),
+            },
+        )
+        .await?;
+
+        return Err(anyhow::anyhow!("Client's hostname wasn't correct"));
+    }
+
+    let Ok(public_key) = crate::crypto::from_string(&public_key_string) else {
+        socket
+            .send(&ClientMethod::Error {
+                error: Cow::Borrowed("Invalid public key"),
+            })
+            .await?;
+
+        return Err(anyhow::anyhow!("Invalid public key"));
+    };
+
+    if public_key
+        .verify_strict(
+            format!("{timestamp}@{hostname}").as_bytes(),
+            &crate::crypto::from_string_sig(&signature)?,
+        )
+        .is_err()
+    {
+        socket
+            .send(&ClientMethod::Error {
+                error: Cow::Borrowed("Invalid signature"),
+            })
+            .await?;
+
+        return Err(anyhow::anyhow!("Invalid signature"));
+    }
+
+    {
+        socket
+            .send(&ClientMethod::Initialized {
+                public_key: crate::crypto::to_string(&server.identity.key.verifying_key()),
+                signature: crate::crypto::to_string_sig(&server.identity.key.sign(
+                    format!("{server_timestamp}@{hostname}@{public_key_string}").as_bytes(),
+                )),
+
+                timestamp: server_timestamp,
+                hostname,
+            })
+            .await?;
+    }
+
+    let Some(ServerMethod::Meta(meta)) = socket.read().await? else {
+        socket
+            .send(&ClientMethod::Error {
+                error: Cow::Borrowed("Expected meta"),
+            })
+            .await?;
+
+        return Err(anyhow::anyhow!(
+            "Expected meta, client called another method"
+        ));
+    };
+
+    for pin in server.voice.pins.lock().await.values() {
+        socket
+            .send(&ClientMethod::UserJoinedVoice {
+                channel_id: pin.channel_id.clone(),
+                pubkey: crate::crypto::to_string(&pin.pubkey),
+            })
+            .await?;
+    }
+
+    Ok((public_key, meta))
 }
