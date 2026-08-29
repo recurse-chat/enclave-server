@@ -111,6 +111,15 @@ impl UserConnections {
             ));
         };
 
+        for (pubkey, channel_id) in server.voice_pins.lock().await.values() {
+            socket
+                .send(&ClientMethod::UserJoinedVoice {
+                    channel_id: channel_id.clone(),
+                    pubkey: crate::crypto::to_string(pubkey),
+                })
+                .await?;
+        }
+
         Ok((public_key, meta))
     }
 }
