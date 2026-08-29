@@ -136,8 +136,22 @@ impl Server {
 
                     connections.remove(&conid);
 
-                    if connections.len() == 0 {
+                    if connections.is_empty() {
                         clients_meta.remove(&public_key);
+
+                        if let Some(voice) = clients.voice.lock().await.take() {
+                            s.voice_pins
+                                .lock()
+                                .await
+                                .retain(|_, v| v.0 != public_key);
+
+                            s.broadcast(&crate::protocol::ClientMethod::UserLeftVoice {
+                                channel_id: voice.channel_id,
+                                pubkey: crate::crypto::to_string(&public_key),
+                            })
+                            .await
+                            .ok();
+                        }
                     }
                 }
 
